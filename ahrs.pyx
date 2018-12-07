@@ -27,14 +27,14 @@ cdef class AHRS:
         self.beta = beta
         self.dt = dt
 
-    def _get_quaternion(self, (double, double, double) accel, (double, double, double) gyro, (double, double, double) mag):
+    def _update_quaternion(self, (double, double, double) accel, (double, double, double) gyro, (double, double, double) mag):
         """Python wrapper method for testing and timing purposes"""
-        return self.get_quaternion(accel, gyro, mag)
+        return self.update_quaternion(accel, gyro, mag)
 
     # Remove zero division checks
     # as we catch the exception already in the code
     @cython.cdivision(True)        
-    cdef (double, double, double) get_quaternion(self, (double, double, double) accel, (double, double, double) gyro, (double, double, double) mag):
+    cdef update_quaternion(self, (double, double, double) accel, (double, double, double) gyro, (double, double, double) mag):
         """Converts sensor data to quaternions using Madgwick algorithm"""
         # Todo: Test Mahony algorithm for sensor fusion
         cdef double mx, my, mz
@@ -52,7 +52,6 @@ cdef class AHRS:
         cdef double _2bx, _2bz, _4bx, _4bz
         cdef double s1, s2, s3, s4
         cdef double qDot1, qDot2, qDot3, qDot4
-        cdef double yaw, pitch, roll
 
         # Accelerometer and magnetometer units irrelevant
         # as they are normalised
@@ -73,7 +72,7 @@ cdef class AHRS:
         # TODO: Test reciprocal norm factor and sqrt approximation
         norm = sqrt(ax * ax + ay * ay + az * az)
         if norm == 0:
-            return (0, 0, 0)
+            return
         
         ax /= norm
         ay /= norm
@@ -84,7 +83,7 @@ cdef class AHRS:
         # TODO: Test reciprocal norm factor and sqrt approximation
         norm = sqrt(mx * mx + my * my + mz * mz)
         if (norm == 0):
-            return (0, 0, 0)
+            return
 
         mx /= norm
         my /= norm
@@ -154,7 +153,13 @@ cdef class AHRS:
         self.q2 /= norm
         self.q3 /= norm
         self.q4 /= norm
-        yaw = degrees(atan2(self.q2*self.q3 + self.q1*self.q4, 0.5 - self.q3*self.q3 - self.q4*self.q4))
-        pitch = degrees(-asin(-2.0 * (self.q2*self.q4 - self.q1*self.q3)))
-        roll = degrees(atan2(self.q1*self.q2 + self.q3*self.q4, 0.5 - self.q1*self.q1 - self.q2*self.q2))
+
+    def _get_orientation(self):
+        return self.get_orientation()
+        
+    cdef (double, double, double) get_orientation(self):
+        cdef double yaw, pitch, roll
+        yaw = degrees(atan2(2 * (self.q2*self.q3 + self.q1*self.q4), self.q1*self.q1 + self.q2*self.q2 - self.q3*self.q3 - self.q4*self.q4))
+        pitch = degrees(-asin(2 * (self.q2*self.q4 - self.q1*self.q3)))
+        roll = degrees(atan2(2 * (self.q1*self.q2 + self.q3*self.q4), self.q1*self.q1 - self.q2*self.q2 - self.q3*self.q3 + self.q4*self.q4))
         return (yaw, pitch, roll)

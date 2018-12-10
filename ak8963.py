@@ -60,6 +60,7 @@ class AK8963:
     def __init__(self, address=SLAVE_ADDRESS):
         self.address = address
         self.configure()
+        self.sens_adj_x, self.sens_adj_y, self.sens_adj_z = self.get_sens_adj()
     
     def configure(self):
         """Configure AK8963"""
@@ -72,19 +73,21 @@ class AK8963:
         bus.write_byte_data(self.address, CNTL1, MODE_FUSEROM)
         time.sleep(0.01)
 
-        # read coef data
-        data = bus.read_i2c_block_data(self.address, ASAX, 3)
-
-        self.magXcoef = (data[0] - 128) / 256.0 + 1.0
-        self.magYcoef = (data[1] - 128) / 256.0 + 1.0
-        self.magZcoef = (data[2] - 128) / 256.0 + 1.0
-
         # set power down mode
         bus.write_byte_data(self.address, CNTL1, MODE_DOWN)
         time.sleep(0.01)
 
         self.set_mode(BIT_16)
 
+    def get_sens_adj(self):
+        # read coef data
+        data = bus.read_i2c_block_data(self.address, ASAX, 3)
+
+        sens_adj_x = (data[0] - 128) / 256.0 + 1.0
+        sens_adj_y = (data[1] - 128) / 256.0 + 1.0
+        sens_adj_z = (data[2] - 128) / 256.0 + 1.0
+        return (sens_adj_x, sens_adj_y, sens_adj_z)
+        
     def calibrate(self):
         """Calibrates sensors by writing offsets to specific registers"""
 
@@ -124,16 +127,16 @@ class AK8963:
 
     def read_magnet(self):
         """Read magnetometer data from AK8963_MAGNET_OUT register"""
-        xyz = [0, 0, 0]
-
+        
         # check data ready
         drdy = bus.read_byte_data(self.address, ST1)
-        if drdy & 0x01 :
+        if drdy & 0x01:
             data = bus.read_i2c_block_data(self.address, HXL, 7)
 
             # check overflow
-            if (data[6] & 0x08) != 0x08:
-                for i in range(3):
-                    xyz[i] = bytes_to_int16(data[i*2], data[i*2 + 1])
-                    xyz[i] *= (self.mres * self.magXcoef)
-        return xyz
+            if not (data[6] & 0x08):
+                x = bytes_to_int16(data[0], data[1]) * self.mres * self.sens_adj_x
+                y = bytes_to_int16(data[2], data[3]) * self.mres * self.sens_adj_y
+                z = bytes_to_int16(data[4], data[5]) * self.mres * self.sens_adj_z
+                return (x, y, z)
+        return (0.0, 0.0, 0.0)

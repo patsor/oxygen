@@ -1,5 +1,6 @@
 """
-Implementation of the MPU9250 9-DOF sensor chip
+Implementation of the MPU6500 6-DOF sensor chip
+(Accelerometer, Gyroscope)
 """
 
 import smbus
@@ -29,122 +30,20 @@ YG_OFFSET_L = 0x16
 ZG_OFFSET_H = 0x17
 ZG_OFFSET_L = 0x18
 # Sample Rate Divider - Serial IF: R/W, Reset value: 0x00
-# Divides the internal sample rate (see register CONFIG) to generate the
-# sample rate that controls sensor data output rate, FIFO sample rate.
-# NOTE: This register is only effective when Fchoice = b'11
-# (fchoice_b register bits are b'00), and (0 < dlpf_cfg < 7),
-# such that the average filter's
-# output is selected (see chart below).
-# This is the update rate of sensor register.
-# SAMPLE_RATE= Internal_Sample_Rate / (1 + SMPLRT_DIV)
 SMPLRT_DIV = 0x19
 # Configuration
-# Bit    Name          Function
-# [7]    -             Reserved
-# [6]    FIFO_MODE     When set to "1", when the fifo is full, additional writes will not be written to fifo.
-#                      When set to "0", when the fifo is full, additional writes will be written to the fifo,
-#                      replacing the oldest data.
-# [5:3]  EXT_SYNC_SET  Enables the FSYNC pin data to be sampled.
-#                      EXT_SYNC_SET   FSYNC bit location
-#                      0              function disabled
-#                      1              TEMP_OUT_L[0]
-#                      2              GYRO_XOUT_L[0]
-#                      3              GYRO_YOUT_L[0]
-#                      4              GYRO_ZOUT_L[0]
-#                      5              ACCEL_XOUT_L[0]
-#                      6              ACCEL_YOUT_L[0]
-#                      7              ACCEL_ZOUT_L[0]
-#                      Fsync will be latched to capture short strobes. This will be done such that if
-#                      Fsync toggles, the latched value toggles, but won't toggle again until the new
-#                      latched value is captured by the sample rate strobe. This is a requirement for
-#                      working with some 3rd party devices that have fsync strobes shorter than our
-#                      sample rate.
-# [2:0] DLPF_CFG       For the DLPF to be used, fchoice[1:0] must be set to b'11,
-#                      fchoice_b[1:0] is b'00.
-# FCHOICE DLPF_CFG Gyroscope                            Temperature Sensor
-# <1> <0>          Bandwidth (Hz) Delay (ms)  Fs (kHz)   Bandwidth (Hz) Delay (ms)
-#  x   0     x     8800            0.064      32         4000            0.04
-#  0   1     x     3600            0.11       32         4000            0.04
-#  1   1     0      250            0.97        8         4000            0.04
-#  1   1     1      184            2.9         1          188            1.9
-#  1   1     2       92            3.9         1           98            2.8
-#  1   1     3       41            5.9         1           42            4.8
-#  1   1     4       20            9.9         1           20            8.3
-#  1   1     5       10           17.85        1           10           13.4
-#  1   1     6        5           33.48        1            5           18.6
-#  1   1     7     3600            0.17        8         4000            0.04
 CONFIG = 0x1A
 # Gyroscope Configuration - Serial IF: R/W, Reset value: 0x00
-# Bit   Name              Function
-# [7]   XGYRO_Cten        X Gyro self-test
-# [6]   YGYRO_Cten        Y Gyro self-test
-# [5]   ZGYRO_Cten        Z Gyro self-test
-# [4:3] GYRO_FS_SEL[1:0]  Gyro Full Scale Select:
-#                         00 = +250dps
-#                         01= +500 dps
-#                         10 = +1000 dps
-#                         11 = +2000 dps
-# [2]   -                 Reserved
-# [1:0] Fchoice_b[1:0]    Used to bypass DLPF as shown in table 1 above. NOTE:
-#                         Register is Fchoice_b (inverted version of Fchoice), table 1 uses
-#                         Fchoice (which is the inverted version of this register).
 GYRO_CONFIG = 0x1B
 # Accelerometer Configuration - Serial IF: R/W, Reset value: 0x00
-# Bit   Name                Function
-# [7]   ax_st_en            X Accel self-test
-# [6]   ay_st_en            Y Accel self-test
-# [5]   az_st_en            Z Accel self-test
-# [4:3] ACCEL_FS_SEL[1:0]   Accel Full Scale Select:
-#                           +/-2g (00), +/-4g (01), +/-8g (10), +/-16g (11)
-# [2:0] -                   Reserved
 ACCEL_CONFIG = 0x1C
 # Accelerometer Configuration 2 - Serial IF: R/W, Reset value: 0x00
-# Bit   Name                Function
-# [7:6] -                   Reserved
-# [5:4] -                   Reserved
-# [3]   accel_fchoice_b     Used to bypass DLPF as shown in table 2 below. NOTE: This register
-#                           contains accel_fchoice_b (the inverted version of accel_fchoice as
-#                           described in the table below).
-# [2:0] A_DLPFCFG           Accelerometer low pass filter setting as shown in table 2 below. 
 ACCEL_CONFIG_2 = 0x1D
 # Low Power Accelerometer ODR Control - Serial IF: R/W, Reset value: 0x00
 LP_ACCEL_ODR = 0x1E
 # Wake on Motion Threshold - Serial IF: R/W, Reset value: 0x00
-# Bit   Name                Function
-# [7:0] WOM_Threshold       This register holds the threshold value for the Wake on Motion Interrupt for
-#                           accel x/y/z axes. LSB = 4mg. Range is 0mg to 1020mg.
 WOM_THR = 0x1F
 # FIFO Enable - Serial IF: R/W, Reset value: 0x00
-# Bit   Name                Function
-# [7]   TEMP_OUT            1 - Write TEMP_OUT_H and TEMP_OUT_L to the FIFO at the sample rate
-#                           If enabled, buffering of data occurs even if data path is in standby.
-#                           0 - function is disabled
-# [6]   GYRO_XOUT           1 - Write GYRO_XOUT_H and GYRO_XOUT_L to the FIFO at the sample
-#                           rate; If enabled, buffering of data occurs even if data path is in standby.
-#                           0 - function is disabled
-# [5]   GYRO_YOUT           1 - Write GYRO_YOUT_H and GYRO_YOUT_L to the FIFO at the sample
-#                           rate; If enabled, buffering of data occurs even if data path is in standby.
-#                           0 - function is disabled
-#                           NOTE: Enabling any one of the bits corresponding to the Gyros or Temp data paths,
-#                           data is buffered into the FIFO even though that data path is not enabled.
-# [4]   GYRO_ZOUT           1 - Write GYRO_ZOUT_H and GYRO_ZOUT_L to the FIFO at the sample
-#                           rate; If enabled, buffering of data occurs even if data path is in standby.
-#                           0 - function is disabled
-# [3]   ACCEL               1 - write ACCEL_XOUT_H, ACCEL_XOUT_L, ACCEL_YOUT_H,
-#                           ACCEL_YOUT_L, ACCEL_ZOUT_H, and ACCEL_ZOUT_L to the FIFO at
-#                           the sample rate;
-#                           0 - function is disabled
-# [2]   SLV_2               1 - write EXT_SENS_DATA registers associated to SLV_2 (as determined by
-#                           I2C_SLV0_CTRL, I2C_SLV1_CTRL, and I2C_SL20_CTRL) to the FIFO at
-#                           the sample rate;
-#                           0 - function is disabled
-# [1]   SLV_1               1 - write EXT_SENS_DATA registers associated to SLV_1 (as determined by
-#                           I2C_SLV0_CTRL and I2C_SLV1_CTRL) to the FIFO at the sample rate;
-#                           0 - function is disabled
-# [0]   SLV_0               1 - write EXT_SENS_DATA registers associated to SLV_0 (as determined by
-#                           I2C_SLV0_CTRL) to the FIFO at the sample rate;
-#                           0 - function is disabled
-#                           NOTE: See I2C_SLV3_CTRL register to enable this feature for SLV_3
 FIFO_EN = 0x23
 # I2C Master Control - Serial IF: R/W, Reset value: 0x00
 I2C_MST_CTRL = 0x24
@@ -186,16 +85,9 @@ ACCEL_YOUT_L = 0x3E
 ACCEL_ZOUT_H = 0x3F
 ACCEL_ZOUT_L = 0x40
 # Temperature Measurement - Serial IF: SyncR, Reset value: 0x00 (if sensor disabled)
-# TEMP_degC = ((TEMP_OUT - RoomTemp_Offset)/Temp_Sensitivity) + 21degC
-# Where Temp_degC is the temperature in degrees C
-# measured by the temperature sensor. TEMP_OUT is
-# the actual output of the temperature sensor.
 TEMP_OUT_H = 0x41
 TEMP_OUT_L = 0x42
 # Gyroscope Measurements - Serial IF: SyncR, Reset value: 0x00 (if sensor disabled)
-# GYRO_XYZOUT = Gyro_Sensitivity * XYZ_angular_rate
-# Nominal FS_SEL = 0
-# Conditions Gyro_Sensitivity = 131 LSB/(deg/s)
 GYRO_XOUT_H = 0x43
 GYRO_XOUT_L = 0x44
 GYRO_YOUT_H = 0x45
@@ -227,80 +119,23 @@ EXT_SENS_DATA_20 = 0x5D
 EXT_SENS_DATA_21 = 0x5E
 EXT_SENS_DATA_22 = 0x5F
 EXT_SENS_DATA_23 = 0x60
-# I2C Slave 0/1/2/3 Data Out - Serial IF: R/W, Reset value: 0x00
 I2C_SLV0_DO = 0x63
 I2C_SLV1_DO = 0x64
 I2C_SLV2_DO = 0x65
 I2C_SLV3_DO = 0x66
-# I2C Master Delay Control - Serial IF: R/W, Reset value: 0x00
 I2C_MST_DELAY_CTRL = 0x67
-# Signal Path Reset - Serial IF: R/W, Reset value: 0x00
 SIGNAL_PATH_RESET = 0x68
-# Accelerometer Interrupt Control - Serial IF: R/W, Reset value: 0x00
 ACCEL_INTEL_CTRL = 0x69
-# User Control - Serial IF: R/W, Reset value: 0x00
 USER_CTRL = 0x6A
-# Power Management 1 - Serial IF: R/W, Reset value: : (Depends on PU_SLEEP_MODE bit, see below)
-# Bit   Name                Function
-# [7]   H_RESET             1 - Reset the internal registers and restores the default settings. Write a 1 to
-#                           set the reset, the bit will auto clear.
-# [6]   SLEEP               When set, the chip is set to sleep mode (After OTP loads, the
-#                           PU_SLEEP_MODE bit will be written here)
-# [5]   CYCLE               When set, and SLEEP and STANDBY are not set, the chip will cycle
-#                           between sleep and taking a single sample at a rate determined by
-#                           LP_ACCEL_ODR register
-#                           NOTE: When all accelerometer axis are disabled via PWR_MGMT_2
-#                           register bits and cycle is enabled, the chip will wake up at the rate
-#                           determined by the respective registers above, but will not take any samples.
-# [4]   GYRO_STANDBY        When set, the gyro drive and pll circuitry are enabled, but the sense paths
-#                           are disabled. This is a low power mode that allows quick enabling of the
-#                           gyros.
-# [3]   PD_PTAT             Power down internal PTAT voltage generator and PTAT ADC
-# [2:0] CLKSEL[2:0]         Code    Clock Source
-#                           0       Internal 20MHz oscillator
-#                           1       Auto selects the best available clock source - PLL if ready, else
-#                                   use the Internal oscillator
-#                           2       Auto selects the best available clock source - PLL if ready, else
-#                                   use the Internal oscillator
-#                           3       Auto selects the best available clock source - PLL if ready, else
-#                                   use the Internal oscillator
-#                           4       Auto selects the best available clock source - PLL if ready, else
-#                                   use the Internal oscillator
-#                           5       Auto selects the best available clock source - PLL if ready, else
-#                                   use the Internal oscillator
-#                           6       Internal 20MHz oscillator
-#                           7       Stops the clock and keeps timing generator in reset
-#                                   (After OTP loads, the inverse of PU_SLEEP_MODE bit will be written to
-#                                   CLKSEL[0])
+# Power Management 1 + 2
 PWR_MGMT_1 = 0x6B
-# Power Management 2 - Serial IF: R/W, Reset value: 0x00
-# Bit   Name                Function
-# [7:6] -                   Reserved
-# [5]   DISABLE_XA          1 - X accelerometer is disabled
-#                           0 - X accelerometer is on
-# [4]   DISABLE_YA          1 - Y accelerometer is disabled
-#                           0 - Y accelerometer is on
-# [3]   DISABLE_ZA          1 - Z accelerometer is disabled
-#                           0 - Z accelerometer is on
-# [2]   DISABLE_XG          1 - X gyro is disabled
-#                           0 - X gyro is on
-# [1]   DISABLE_YG          1 - Y gyro is disabled
-#                           0 - Y gyro is on
-# [0]   DISABLE_ZG          1 - Z gyro is disabled
-#                           0 - Z gyro is on
 PWR_MGMT_2 = 0x6C
-# FIFO Count Registers - Serial IF: Read Only, Reset value: 0x00
-# Bit     Name                Function
-# [15:13] -                   Reserved
-# [12:8]  FIFO_CNT_H          High byte
-# [7:0]   FIFO_CNT_L          Low byte
+# FIFO Count registers, used to determine current FIFO buffer size
 FIFO_COUNTH = 0x72
 FIFO_COUNTL = 0x73
-# FIFO Read Write - Serial IF: R/W, Reset value: 0x00
 FIFO_R_W = 0x74
-# Who Am I - Serial IF: Read Only, Reset value: 0x68
 WHO_AM_I = 0x75
-# Accelerometer Offset Registers - Serial IF: R/W, Reset value: 0x00
+# Accelerometer offset registers - Serial IF: R/W, Reset value: 0x00
 XA_OFFSET_H = 0x77
 XA_OFFSET_L = 0x78
 YA_OFFSET_H = 0x7A
@@ -308,72 +143,857 @@ YA_OFFSET_L = 0x7B
 ZA_OFFSET_H = 0x7D
 ZA_OFFSET_L = 0x7E
 
-## Gyro Full Scale Select 250dps
+
+# Sample Rate Modes
+SAMPLE_RATE_1KHZ = 0x00
+
+# FIFO Write Modes
+FIFO_MODE_NO_OVERWRITE = 0x40
+
+# Gyro Full Scale Select Modes (degrees/sec)
 GFS_250DPS = 0x00
-## Gyro Full Scale Select 500dps
 GFS_500DPS = 0x01
-## Gyro Full Scale Select 1000dps
 GFS_1000DPS = 0x02
-## Gyro Full Scale Select 2000dps
 GFS_2000DPS = 0x03
-## Accel Full Scale Select 2G
+
+# Accel Full Scale Select Modes (g)
 AFS_2G = 0x00
-## Accel Full Scale Select 4G
 AFS_4G = 0x01
-## Accel Full Scale Select 8G
 AFS_8G = 0x02
-## Accel Full Scale Select 16G
 AFS_16G = 0x03
 
-## smbus
+# Load I2C interface
 bus = smbus.SMBus(1)
 
-## MPU9250 I2C Control class
 class MPU6500:
 
     def __init__(self, address=SLAVE_ADDRESS):
         self.address = address
-        self.configure()
+        self.configure_fifo()
+#        self.configure()
         self.self_test()
-        self.calibrate()
+        self.calibrate_fifo()
+#        self.calibrate()
+
+    def read_register_burst(self, register, n):
+        """Reads n bytes from register with auto-increment"""
+        return bus.read_i2c_block_data(self.address, register, n)
+
+    def write_register_burst(self, register, data):
+        """Writes n bytes to register with auto-increment"""
+        bus.write_i2c_block_data(self.address, register, data)
+
+    def read_register(self, register):
+        """Reads value from register"""
+        return bus.read_byte_data(self.address, register)
+
+    def write_register(self, register, value):
+        """Writes value to register"""
+        bus.write_byte_data(self.address, register, value)
+
+    def read_register_bit(self, register, index):
+        """Reads specific bit at 'index' from register"""
+        data = self.read_register(register)
+        return check_bit(data, index)
+
+    def write_register_bit(self, register, index, value):
+        """Write 'value' into specific bit at 'index' to register"""
+        data = self.read_register(register)
+        val = set_bit_value(data, index, value)
+        self.write_register(register, val)
+
+    def get_self_test_x_gyro(self):
+        """
+        Get gyroscope x-axis self test output
+        generated during manufacturing tests.
+        """
+        return self.read_register(SELF_TEST_X_GYRO)
+
+    def set_self_test_x_gyro(self, value):
+        """Set gyroscope x-axis self test value"""
+        self.write_register(SELF_TEST_X_GYRO, value)
+
+    def get_self_test_y_gyro(self):
+        """
+        Get gyroscope y-axis self test output
+        generated during manufacturing tests.
+        """
+        return self.read_register(SELF_TEST_Y_GYRO)
+
+    def set_self_test_y_gyro(self, value):
+        """Set gyroscope y-axis self test value"""
+        self.write_register(SELF_TEST_Y_GYRO, value)
+
+    def get_self_test_z_gyro(self):
+        """
+        Get gyroscope z-axis self test output
+        generated during manufacturing tests.
+        """
+        return self.read_register(SELF_TEST_Z_GYRO)
+
+    def set_self_test_z_gyro(self, value):
+        """Set gyroscope z-axis self test value"""
+        self.write_register(SELF_TEST_Z_GYRO, value)
+
+    def get_self_test_gyro(self):
+        """Get gyroscope self test output from all axis"""
+        return self.read_register_burst(SELF_TEST_X_GYRO, 3)
+
+    def set_self_test_gyro(self, values):
+        """Set gyroscope self test values of all axis"""
+        bus.write_i2c_block_data(self.address, SELF_TEST_X_GYRO, values)
+
+    def get_self_test_x_accel(self):
+        """
+        Get accelerometer x-axis self test output
+        generated during manufacturing tests.
+        """
+        return self.read_register(SELF_TEST_X_ACCEL)
+
+    def set_self_test_x_accel(self, value):
+        """Set accelerometer x-axis self test value"""
+        self.write_register(SELF_TEST_X_ACCEL, value)
+
+    def get_self_test_y_accel(self):
+        """
+        Get accelerometer y-axis self test output
+        generated during manufacturing tests.
+        """
+        return self.read_register(SELF_TEST_Y_ACCEL)
+
+    def set_self_test_y_accel(self, value):
+        """Set accelerometer y-axis self test value"""
+        self.write_register(SELF_TEST_Y_ACCEL, value)
+
+    def get_self_test_z_accel(self):
+        """
+        Get accelerometer z-axis self test output
+        generated during manufacturing tests.
+        """
+        return self.read_register(SELF_TEST_Z_ACCEL)
+
+    def set_self_test_z_accel(self, value):
+        """Set accelerometer z-axis self test value"""
+        self.write_register(SELF_TEST_Z_ACCEL, value)
+
+    def get_self_test_accel(self):
+        """Get accelerometer self test output from all axis"""
+        return self.read_register_burst(SELF_TEST_X_ACCEL, 3)
+
+    def set_self_test_accel(self, values):
+        """Set accelerometer self test values of all axis"""
+        bus.write_i2c_block_data(self.address, SELF_TEST_X_ACCEL, values)
+
+    def get_xg_offs_usr(self):
+        data = self.read_register_burst(XG_OFFS_USR_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def set_xg_offs_usr(self, value):
+        data = int16_to_bytes(value)
+        bus.write_i2c_block_data(self.address, XG_OFFS_USR_H, data)
+
+    def get_yg_offs_usr(self):
+        data = self.read_register_burst(YG_OFFS_USR_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def set_yg_offs_usr(self, value):
+        data = int16_to_bytes(value)
+        bus.write_i2c_block_data(self.address, YG_OFFS_USR_H, data)
+
+    def get_zg_offs_usr(self):
+        data = self.read_register_burst(ZG_OFFS_USR_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def set_zg_offs_usr(self, value):
+        data = int16_to_bytes(value)
+        bus.write_i2c_block_data(self.address, ZG_OFFS_USR_H, data)
+
+    def get_gyro_offs_usr(self):
+        data = self.read_register_burst(ZG_OFFS_USR_H, 6)
+        x = bytes_to_int16(data[1], data[0])
+        y = bytes_to_int16(data[3], data[2])
+        z = bytes_to_int16(data[5], data[4])
+        return (x, y, z)
+
+    def set_gyro_offs_usr(self, values):
+        x = int16_to_bytes(values[0])
+        y = int16_to_bytes(values[1])
+        z = int16_to_bytes(values[2])
+        data = [x[0], x[1], y[0], y[1], z[0], z[1]]
+        bus.write_i2c_block_data(self.address, XG_OFFS_USR_H, data)
+
+    def get_smplrt_div(self):
+        return self.read_register(SMPLRT_DIV)
+
+    def set_smplrt_div(self, value):
+        self.write_register(SMPLRT_DIV, value)
+
+    def get_fifo_mode(self):
+        """Get FIFO write mode"""
+        return self.read_register_bit(CONFIG, 6)
+        
+    def set_fifo_mode(self, value):
+        """Set FIFO write mode"""
+        self.write_register_bit(CONFIG, 6, value)
+
+    def get_ext_fsync_set(self):
+        data = self.read_register(CONFIG)
+        return data & 0x38
+
+    def set_ext_fsync_set(self, value):
+        data = self.read_register(CONFIG)
+        val = set_bits(data, 3, 3, value)
+        self.write_register(CONFIG, val)
+
+    def get_gyro_temp_dlpf_cfg(self):
+        data = self.read_register(CONFIG)
+        return data & 0x07
+
+    def set_gyro_temp_dlpf_cfg(self, value):
+        data = self.read_register(CONFIG)
+        val = set_bits(data, 0, 3, value)
+        self.write_register(CONFIG, val)
+
+    def get_gx_st_en(self):
+        return read_register_bit(GYRO_CONFIG, 7)
+
+    def set_gx_st_en(self, value):
+        self.write_register_bit(GYRO_CONFIG, 7, value)
+
+    def get_gy_st_en(self):
+        return self.read_register_bit(GYRO_CONFIG, 6)
+
+    def set_gy_st_en(self, value):
+        self.write_register_bit(GYRO_CONFIG, 6, value)
+
+    def get_gz_st_en(self):
+        return self.read_register_bit(GYRO_CONFIG, 5)
+
+    def set_gz_st_en(self, value):
+        self.write_register_bit(GYRO_CONFIG, 5, value)
+
+    def get_gyro_fs_sel(self):
+        data = self.read_register(GYRO_CONFIG)
+        return data & 0x18
+
+    def set_gyro_fs_sel(self, value):
+        data = self.read_register(GYRO_CONFIG)
+        val = set_bits(data, 3, 2, value)
+        self.write_register(GYRO_CONFIG, val)
+
+    def get_gyro_fchoice_b(self):
+        data = self.read_register(GYRO_CONFIG)
+        return data & 0x03
+
+    def set_gyro_fchoice_b(self, value):
+        data = self.read_register(GYRO_CONFIG)
+        val = set_bits(data, 0, 2, value)
+        self.write_register(GYRO_CONFIG, val)
+
+    def get_ax_st_en(self):
+        return self.read_register_bit(ACCEL_CONFIG, 7)
+
+    def set_ax_st_en(self, value):
+        self.write_register_bit(ACCEL_CONFIG, 7, value)
+
+    def get_ay_st_en(self):
+        return self.read_register_bit(ACCEL_CONFIG, 6)
+
+    def set_ay_st_en(self, value):
+        self.write_register_bit(ACCEL_CONFIG, 6, value)
+
+    def get_az_st_en(self):
+        return self.read_register_bit(ACCEL_CONFIG, 5)
+
+    def set_az_st_en(self, value):
+        self.write_register_bit(ACCEL_CONFIG, 5, value)
+
+    def get_accel_fs_sel(self):
+        data = self.read_register(ACCEL_CONFIG)
+        return data & 0x18
+
+    def set_accel_fs_sel(self, value):
+        data = self.read_register(ACCEL_CONFIG)
+        val = set_bits(data, 3, 2, value)
+        self.write_register(ACCEL_CONFIG, val)
+
+    def get_accel_fchoice_b(self):
+        return self.read_register_bit(ACCEL_CONFIG_2, 3)
+
+    def set_accel_fchoice_b(self, value):
+        self.write_register_bit(ACCEL_CONFIG_2, 3, value)
+
+    def get_accel_dlpf_cfg(self):
+        data = self.read_register(ACCEL_CONFIG_2)
+        return data & 0x07
+        
+    def set_accel_dlpf_cfg(self, value):
+        data = self.read_register(ACCEL_CONFIG_2)
+        val = set_bits(data, 0, 3, value)
+        self.write_register(ACCEL_CONFIG_2, val)
+
+    def get_accel_lp_odr(self):
+        data = self.read_register(LP_ACCEL_ODR)
+        return data & 0x0f
+
+    def set_accel_lp_odr(self, value):
+        data = self.read_register(LP_ACCEL_ODR)
+        val = set_bits(data, 0, 4, value)
+        self.write_register(LP_ACCEL_ODR, val)
+
+    def get_wom_threshold(self):
+        return self.read_register(WOM_THR)
+        
+    def set_wom_threshold(self, value):
+        self.write_register(WOM_THR, value)
+
+    def get_temp_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 7)
+
+    def set_temp_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 7, value)
+
+    def get_gx_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 6)
+
+    def set_gx_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 6, value)
+
+    def get_gy_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 5)
+
+    def set_gy_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 5, value)
+
+    def get_gz_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 4)
+
+    def set_gz_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 4, value)
+
+    def get_accel_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 3)
+
+    def set_accel_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 3, value)
+
+    def get_slv2_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 2)
+
+    def set_slv2_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 2, value)
+
+    def get_slv1_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 1)
+
+    def set_slv1_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 1, value)
+
+    def get_slv0_fifo_en(self):
+        return self.read_register_bit(FIFO_EN, 0)
+
+    def set_slv0_fifo_en(self, value):
+        self.write_register_bit(FIFO_EN, 0, value)
+
+    def set_accel_gyro_fifo_en(self):
+        data = self.read_register(FIFO_EN)
+        val = set_bits(data, 3, 4, 0x0f)
+        self.write_register(FIFO_EN, val)
+
+    def get_mult_mst_en(self):
+        return self.read_register_bit(I2C_MST_CTRL, 7)
+
+    def set_mult_mst_en(self, value):
+        self.write_register_bit(I2C_MST_CTRL, 7, value)
+
+    def get_wait_for_es(self):
+        return self.read_register_bit(I2C_MST_CTRL, 6)
+
+    def set_wait_for_es(self, value):
+        self.write_register_bit(I2C_MST_CTRL, 6, value)
+
+    def get_slv3_fifo_en(self):
+        return self.read_register_bit(I2C_MST_CTRL, 5)
+
+    def set_slv3_fifo_en(self, value):
+        self.write_register_bit(I2C_MST_CTRL, 5, value)
+
+    def get_i2c_mst_p_nsr(self):
+        return self.read_register_bit(I2C_MST_CTRL, 4)
+
+    def set_i2c_mst_p_nsr(self, value):
+        self.write_register_bit(I2C_MST_CTRL, 4, value)
+
+    def get_i2c_mst_clk(self):
+        data = self.read_register(I2C_MST_CTRL)
+        return data & 0x0f
+
+    def set_i2c_mst_clk(self, value):
+        data = self.read_register(I2C_MST_CTRL)
+        val = set_bits(data, 0, 4, value)
+        self.write_register(I2C_MST_CTRL, val)
+        
+    ## Getters and setters for I2C Slave devices and external sensor data ####
+    # TODO: create
+    ##
+
+    def get_int_pin_active_low(self):
+        return self.read_register_bit(INT_PIN_CFG, 7)
+
+    def set_int_pin_active_low(self, value):
+        self.write_register_bit(INT_PIN_CFG, 7, value)
+
+    def get_int_pin_open_drain(self):
+        return self.read_register_bit(INT_PIN_CFG, 6)
+
+    def set_int_pin_open_drain(self, value):
+        self.write_register_bit(INT_PIN_CFG, 6, value)
+
+    def get_int_pin_latch_int_en(self):
+        return self.read_register_bit(INT_PIN_CFG, 5)
+
+    def set_int_pin_latch_int_en(self, value):
+        self.write_register_bit(INT_PIN_CFG, 5, value)
+
+    def get_int_pin_any_read_clear(self):
+        return self.read_register_bit(INT_PIN_CFG, 4)
+
+    def set_int_pin_any_read_clear(self, value):
+        self.write_register_bit(INT_PIN_CFG, 4, value)
+
+    def get_int_pin_active_low_fsync(self):
+        return self.read_register_bit(INT_PIN_CFG, 3)
+
+    def set_int_pin_active_low_fsync(self, value):
+        self.write_register_bit(INT_PIN_CFG, 3, value)
+
+    def get_int_pin_fsync_int_mode_en(self):
+        return self.read_register_bit(INT_PIN_CFG, 2)
+
+    def set_int_pin_fsync_int_mode_en(self, value):
+        self.write_register_bit(INT_PIN_CFG, 2, value)
+
+    def get_int_pin_bypass_en(self):
+        return self.read_register_bit(INT_PIN_CFG, 1)
+
+    def set_int_pin_bypass_en(self, value):
+        """
+        Enable bypass mode of sensor 
+        to allow third party sensor at I2C_AUX
+        """
+        self.write_register_bit(INT_PIN_CFG, 1, value)
+
+
+    def get_wom_en(self):
+        return self.read_register_bit(INT_ENABLE, 6)
+
+    def set_wom_en(self, value):
+        self.write_register_bit(INT_ENABLE, 6, value)
+
+    def get_fifo_overflow_en(self):
+        return self.read_register_bit(INT_ENABLE, 4)
+
+    def set_fifo_overflow_en(self, value):
+        self.write_register_bit(INT_ENABLE, 4, value)
+
+    def get_fsync_int_en(self):
+        return self.read_register_bit(INT_ENABLE, 3)
+
+    def set_fsync_int_en(self, value):
+        self.write_register_bit(INT_ENABLE, 3, value)
+
+    def get_raw_ready_en(self):
+        return self.read_register_bit(INT_ENABLE, 0)
+
+    def set_raw_ready_en(self, value):
+        self.write_register_bit(INT_ENABLE, 0, value)
+
+    def disable_interrupts(self):
+        """Disable Interrupts"""
+        self.write_register(INT_ENABLE, 0x00)
+
+    def get_wom_int(self):
+        return self.read_register_bit(INT_STATUS, 6)
+
+    def get_fifo_overflow_int(self):
+        return self.read_register_bit(INT_STATUS, 4)
+
+    def get_fsync_int(self):
+        return self.read_register_bit(INT_STATUS, 3)
+
+    def get_raw_data_ready_int(self):
+        return self.read_register_bit(INT_STATUS, 0)
+
+    def read_accel_x_raw(self):
+        data = self.read_register_burst(ACCEL_XOUT_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def read_accel_y_raw(self):
+        data = self.read_register_burst(ACCEL_YOUT_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def read_accel_z_raw(self):
+        data = self.read_register_burst(ACCEL_ZOUT_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def read_accel_raw(self):
+        data = self.read_register_burst(ACCEL_XOUT_H, 6)
+        x = bytes_to_int16(data[1], data[0])
+        y = bytes_to_int16(data[3], data[2])
+        z = bytes_to_int16(data[5], data[4])
+        return (x, y, z)
+
+    def read_temp_raw(self):
+        data = self.read_register_burst(TEMP_OUT_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def read_gyro_x_raw(self):
+        data = self.read_register_burst(GYRO_XOUT_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def read_gyro_y_raw(self):
+        data = self.read_register_burst(GYRO_YOUT_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def read_gyro_z_raw(self):
+        data = self.read_register_burst(GYRO_ZOUT_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def read_gyro_raw(self):
+        data = self.read_register_burst(GYRO_XOUT_H, 6)
+        x = bytes_to_int16(data[1], data[0])
+        y = bytes_to_int16(data[3], data[2])
+        z = bytes_to_int16(data[5], data[4])
+        return (x, y, z)
+
+    def get_gyro_reset(self):
+        return self.read_register_bit(SIGNAL_PATH_RESET, 2)
+
+    def set_gyro_reset(self, value):
+        self.write_register_bit(SIGNAL_PATH_RESET, 2, value)
+
+    def get_accel_reset(self):
+        return self.read_register_bit(SIGNAL_PATH_RESET, 1)
+
+    def set_accel_reset(self, value):
+        self.write_register_bit(SIGNAL_PATH_RESET, 1, value)
+
+    def get_temp_reset(self):
+        return self.read_register_bit(SIGNAL_PATH_RESET, 0)
+
+    def set_temp_reset(self, value):
+        self.write_register_bit(SIGNAL_PATH_RESET, 0, value)
+
+    def get_accel_intel_en(self):
+        return self.read_register_bit(ACCEL_INTEL_CTRL, 7)
+
+    def set_accel_intel_en(self, value):
+        self.write_register_bit(ACCEL_INTEL_CTRL, 7, value)
+
+    def get_accel_intel_mode(self):
+        return self.read_register_bit(ACCEL_INTEL_CTRL, 6)
+
+    def set_accel_intel_mode(self, value):
+        self.write_register_bit(ACCEL_INTEL_CTRL, 6, value)
+        
+    def get_fifo_en(self):
+        return self.read_register_bit(USER_CTRL, 6)
+
+    def set_fifo_en(self, value):
+        self.write_register_bit(USER_CTRL, 6, value)
+
+    def get_i2c_mst_en(self):
+        return self.read_register_bit(USER_CTRL, 5)
+
+    def set_i2c_mst_en(self, value):
+        self.write_register_bit(USER_CTRL, 5, value)
+
+    def get_i2c_interface_disable(self):
+        return self.read_register_bit(USER_CTRL, 4)
+
+    def set_i2c_interface_disable(self, value):
+        self.write_register_bit(USER_CTRL, 4, value)
+
+    def set_fifo_reset(self):
+        self.write_register_bit(USER_CTRL, 2, True)
+
+    def set_i2c_mst_reset(self):
+        self.write_register_bit(USER_CTRL, 1, True)
+
+    def set_signal_condition_reset(self):
+        self.write_register_bit(USER_CTRL, 0, True)
+
+    def set_h_reset(self):
+        self.write_register_bit(PWR_MGMT_1, 7, True)
+
+    def set_sleep(self):
+        self.write_register_bit(PWR_MGMT_1, 6, True)
+
+    def set_cycle(self):
+        self.write_register_bit(PWR_MGMT_1, 5, True)
+
+    def set_gyro_standby(self):
+        self.write_register_bit(PWR_MGMT_1, 4, True)
+
+    def set_power_down_ptat(self):
+        self.write_register_bit(PWR_MGMT_1, 3, True)
+
+    def get_clock_source(self):
+        data = self.read_register(PWR_MGMT_1)
+        return data & 0x07
+
+    def set_clock_source(self, value):
+        data = self.read_register(PWR_MGMT_1)
+        val = set_bits(data, 0, 3, value)
+        self.write_register(PWR_MGMT_1, val)
+
+    def get_disable_ax(self):
+        return self.read_register_bit(PWR_MGMT_2, 5)
+
+    def set_disable_ax(self, value):
+        self.write_register_bit(PWR_MGMT_2, 5)
+
+    def get_disable_ay(self):
+        return self.read_register_bit(PWR_MGMT_2, 4)
+
+    def set_disable_ay(self, value):
+        self.write_register_bit(PWR_MGMT_2, 4)
+
+    def get_disable_az(self):
+        return self.read_register_bit(PWR_MGMT_2, 3)
+
+    def set_disable_az(self, value):
+        self.write_register_bit(PWR_MGMT_2, 3)
+
+    def get_disable_gx(self):
+        return self.read_register_bit(PWR_MGMT_2, 2)
+
+    def set_disable_gx(self, value):
+        self.write_register_bit(PWR_MGMT_2, 2)
+
+    def get_disable_gy(self):
+        return self.read_register_bit(PWR_MGMT_2, 1)
+
+    def set_disable_gy(self, value):
+        self.write_register_bit(PWR_MGMT_2, 1)
+
+    def get_disable_gz(self):
+        return self.read_register_bit(PWR_MGMT_2, 0)
+
+    def set_disable_gz(self, value):
+        self.write_register_bit(PWR_MGMT_2, 0)
+
+    def disable_accel(self):
+        data = self.read_register(PWR_MGMT_2)
+        val = set_bits(data, 3, 3, 0x07)
+        self.write_register(PWR_MGMT_2, val)
+        
+    def disable_gyro(self):
+        data = self.read_register(PWR_MGMT_2)
+        val = set_bits(data, 0, 3, 0x07)
+        self.write_register(PWR_MGMT_2, val)
+
+    def enable_sensors(self):
+        self.write_register(PWR_MGMT_2, 0x00)
+
+    def get_fifo_count(self):
+        data = self.read_register(FIFO_COUNTH, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def get_fifo_rw(self):
+        return self.read_register(FIFO_R_W)
+
+    def set_fifo_rw(self, value):
+        self.write_register(FIFO_RW, value)
+
+    def get_whoami(self):
+        return self.read_register(WHOAMI)
+
+    def get_ax_offset(self):
+        data = self.read_register_burst(XA_OFFS_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def get_ay_offset(self):
+        data = self.read_register_burst(YA_OFFS_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def get_az_offset(self):
+        data = self.read_register_burst(ZA_OFFS_H, 2)
+        return bytes_to_int16(data[1], data[0])
+
+    def get_accel_offset(self):
+        data = self.read_register_burst(XA_OFFS_H, 6)
+        x = bytes_to_int16(data[1], data[0])
+        y = bytes_to_int16(data[3], data[2])
+        z = bytes_to_int16(data[5], data[4])
+        return (x, y, z)
+
+
+        
+    def enable_fifo(self):
+        """Enable FIFO mode"""
+        self.set_fifo_en(True)
+        
+        # Enable gyro and accelerometer sensors for FIFO  (max size 512 bytes)
+        self.set_accel_gyro_fifo_en()
+
+    def disable_i2c_master(self):
+        """Disable I2C Master"""
+        self.write_register(I2C_MST_CTRL, 0x00)
+        self.set_i2c_mst_en(False)
+        
+    def configure_fifo(self):
+        """Configure MPU9250 in FIFO mode"""
+
+        self.set_h_reset()
+        time.sleep(0.1)
+        # auto select clock source
+        self.set_clock_source(0x01)
+
+        # Enable all sensors
+        self.enable_sensors()
+        time.sleep(0.2)
+
+        # Configure device for bias calculation
+        self.disable_interrupts()
+        self.set_fifo_en(False)
+        self.set_clock_source(0x00)
+        self.disable_i2c_master()
+        self.set_fifo_reset()
+        time.sleep(0.015)
+        
+        # Configure MPU6050 gyro and accelerometer for bias calculation
+        self.set_fifo_mode(FIFO_MODE_NO_OVERWRITE)
+        self.set_gyro_temp_dlpf_cfg(0x01)
+
+        self.set_smplrt_div(SAMPLE_RATE_1KHZ)
+
+        #        self.write_register(GYRO_CONFIG, 0x00)
+        #        self.write_register(ACCEL_CONFIG, 0x00)
+
+        self.set_gyro_mode(GFS_1000DPS)
+        self.set_accel_mode(AFS_8G)
+        self.set_int_pin_bypass_en()
+        time.sleep(0.1)
+        self.enable_fifo()
         
     def configure(self):
-        """Configure MPU9250 with gfs (Gyro Full Scale Select) and 
-        afs (Accel Full Scale Select"""
+        """Configure MPU9250"""
 
         # Write a one to bit 7 reset bit; toggle reset device
-        bus.write_byte_data(self.address, PWR_MGMT_1, 0x80)
+        self.write_register(PWR_MGMT_1, 0x80)
         time.sleep(0.1)
 
         # Clear sleep mode bit, enable all sensors
-        bus.write_byte_data(self.address, PWR_MGMT_1, 0x00)
+        self.write_register(PWR_MGMT_1, 0x00)
         time.sleep(0.1)
         
         # auto select clock source
-        bus.write_byte_data(self.address, PWR_MGMT_1, 0x01)
+        self.write_register(PWR_MGMT_1, 0x01)
+        time.sleep(0.2)
+
+        # Enable all sensors
+        self.write_register(PWR_MGMT_2, 0x00)
         time.sleep(0.2)
 
         self.set_gyro_mode(GFS_1000DPS)
         self.set_accel_mode(AFS_8G)
 
         # DLPF_CFG (Gryo Bandwidth: 41Hz, Gyro Delay: 5.9ms,FS: 1kHz. Temp Bandwidth: 42Hz. Temp Delay: 4.8ms)
-#        bus.write_byte_data(self.address, CONFIG, 0x03)
+#        self.write_register(CONFIG, 0x03)
         # sample rate divider - Sample Rate: Internal Sample Rate / (1 + SMPLRT_DIV)
-        bus.write_byte_data(self.address, SMPLRT_DIV, 0x00)
+        self.write_register(SMPLRT_DIV, 0x00)
         time.sleep(0.1)
 
         # Enable bypass mode
-        bus.write_byte_data(self.address, INT_PIN_CFG, 0x02)
+        self.write_register(INT_PIN_CFG, 0x02)
         time.sleep(0.1)
 
         # Set MST_CLK rate to 400kHz
-#        bus.write_byte_data(self.address, I2C_MST_CTRL, 0x09)
+#        self.write_register(I2C_MST_CTRL, 0x09)
 
     def self_test(self):
-        accel_data = bus.read_i2c_block_data(self.address, SELF_TEST_X_ACCEL, 3)
-        gyro_data = bus.read_i2c_block_data(self.address, SELF_TEST_X_GYRO, 3)
+        accel_data = self.read_register_burst(SELF_TEST_X_ACCEL, 3)
+        gyro_data = self.read_register_burst(SELF_TEST_X_GYRO, 3)
 #        print("Self test:", accel_data, gyro_data)
 
+    def calibrate_fifo(self, num_samples=512):
+        """Calibrates sensors using FIFO by writing offsets to specific registers"""
+        accel_offs_x = 0.0
+        accel_offs_y = 0.0
+        accel_offs_z = 0.0
+        gyro_offs_x = 0.0
+        gyro_offs_y = 0.0
+        gyro_offs_z = 0.0
+
+#        print(num_samples)
+
+#        print(fifo_count)
+#        packet_count = fifo_count / 12 # How many sets of full gyro and accelerometer data for averaging
+        i = 0
+        while i < num_samples:
+            self.write_register(FIFO_EN, 0x78)     # Enable gyro and accelerometer sensors for FIFO  (max size 512 bytes in MPU-9150)
+            time.sleep(0.04) # accumulate 40 samples in 40 milliseconds = 480 bytes
+        
+            # At end of sample accumulation, turn off FIFO sensor read
+            self.write_register(FIFO_EN, 0x00)        # Disable gyro and accelerometer sensors for FIFO
+#            while self.get_fifo_count() < 12:
+#                pass
+            fifo_count = self.get_fifo_count()
+            num_packets = fifo_count / 12
+            if i + num_packets > num_samples:
+                num_packets = num_samples - i
+            i += num_packets
+#            print(fifo_count)
+            for n in range(num_packets):
+                data = self.read_register_burst(FIFO_R_W, 12) # read data for averaging
+#                print(data)
+
+            # [247, 32, 11, 130, 7, 106, 255, 208, 0, 35, 0, 11]
+            # Correct order
+            # ([247, 26, 11, 151, 7, 85], [255, 205, 0, 40, 0, 7])
+            # => (-2280.076171875, 2959.427734375, -2228.927734375, -42.455078125, 39.6640625, 8.689453125)
+            
+                ax = bytes_to_int16(data[1], data[0])
+                ay = bytes_to_int16(data[3], data[2])
+                az = bytes_to_int16(data[5], data[4])
+                gx = bytes_to_int16(data[7], data[6])
+                gy = bytes_to_int16(data[9], data[8])
+                gz = bytes_to_int16(data[11], data[10])
+
+#            print(ax, ay, az, gx, gy, gz)
+                accel_offs_x += ax
+                accel_offs_y += ay
+                accel_offs_z += az
+                gyro_offs_x += gx
+                gyro_offs_y += gy
+                gyro_offs_z += gz
+#            print("Read data (int):", accel, gyro)
+
+        # Normalize sums to get average count biases
+        accel_offs_x /= num_samples
+        accel_offs_y /= num_samples
+        accel_offs_z /= num_samples
+        gyro_offs_x /= num_samples
+        gyro_offs_y /= num_samples
+        gyro_offs_z /= num_samples
+
+ #       print("Calculated biases:", accel_bias, gyro_bias)
+        
+        # Remove gravity from the z-axis accelerometer bias calculation
+        if(accel_offs_z > 0):
+            accel_offs_z -= int(1 / self.ares)
+        else:
+            accel_offs_z += int(1 / self.ares)
+
+        self.accel_offs_x = accel_offs_x
+        self.accel_offs_y = accel_offs_y
+        self.accel_offs_z = accel_offs_z
+        self.gyro_offs_x = gyro_offs_x
+        self.gyro_offs_y = gyro_offs_y
+        self.gyro_offs_z = gyro_offs_z
+#        print(accel_offs_x, accel_offs_y, accel_offs_z, gyro_offs_x, gyro_offs_y, gyro_offs_z)
+                
     def calibrate(self, num_samples=512):
         """Calibrates sensors by writing offsets to specific registers"""
 
@@ -385,17 +1005,18 @@ class MPU6500:
         gyro_offs_z = 0.0
 
         for i in range(num_samples):
-            accel_data = bus.read_i2c_block_data(self.address, ACCEL_XOUT_H, 6)
-            gyro_data = bus.read_i2c_block_data(self.address, GYRO_XOUT_H, 6)
-            
-            time.sleep(0.01)
-            ax = bytes_to_int16(accel_data[1], accel_data[0])
-            ay = bytes_to_int16(accel_data[3], accel_data[2])
-            az = bytes_to_int16(accel_data[5], accel_data[4])
-            gx = bytes_to_int16(gyro_data[1], gyro_data[0])
-            gy = bytes_to_int16(gyro_data[3], gyro_data[2])
-            gz = bytes_to_int16(gyro_data[5], gyro_data[4])
-
+            ax, ay, az = self.read_accel_raw()
+#            accel_data = self.read_register_burst(ACCEL_XOUT_H, 6)
+            gx, gy, gz = self.read_gyro_raw()
+#            gyro_data = self.read_register_burst(GYRO_XOUT_H, 6)
+#            time.sleep(0.01)
+#            ax = bytes_to_int16(accel_data[1], accel_data[0])
+#            ay = bytes_to_int16(accel_data[3], accel_data[2])
+#            az = bytes_to_int16(accel_data[5], accel_data[4])
+#            gx = bytes_to_int16(gyro_data[1], gyro_data[0])
+#            gy = bytes_to_int16(gyro_data[3], gyro_data[2])
+#            gz = bytes_to_int16(gyro_data[5], gyro_data[4])
+#            print(ax, ay, az, gx, gy, gz)
             accel_offs_x += ax
             accel_offs_y += ay
             accel_offs_z += az
@@ -427,6 +1048,8 @@ class MPU6500:
         self.gyro_offs_y = gyro_offs_y
         self.gyro_offs_z = gyro_offs_z
 
+        print(accel_offs_x, accel_offs_y, accel_offs_z, gyro_offs_x, gyro_offs_y, gyro_offs_z)
+
 #        self.set_accel_bias(accel_bias)
 #        self.set_gyro_bias(gyro_bias)
 
@@ -445,7 +1068,7 @@ class MPU6500:
             print("GFS Mode not available {}. Using default (AFS_2G).".format(gfs))
             self.ares = 2.0 / 32768.0
 
-        bus.write_byte_data(self.address, ACCEL_CONFIG, mode << 3)
+        self.write_register(ACCEL_CONFIG, mode << 3)
         
     def set_gyro_mode(self, mode):
         if mode == GFS_250DPS:
@@ -460,44 +1083,29 @@ class MPU6500:
             print("GFS Mode not available {}. Using default (GFS_250).".format(gfs))
             self.gres = 250.0 / 32768.0
 
-        bus.write_byte_data(self.address, GYRO_CONFIG, mode << 3)
-
-    def get_accel_bias(self):
-        accel_bias = [0, 0, 0]
-        accel_data = bus.read_i2c_block_data(self.address, XA_OFFSET_H, 6)
-        for i in range(3):
-            accel_bias[i] = bytes_to_int16(accel_data[i*2 + 1], accel_data[i*2])
-
-        return accel_bias
+        self.set_gyro_fs_sel(mode)
+#       self.write_register(GYRO_CONFIG, mode << 3)
             
     def set_accel_bias(self, accel_bias):
-        accel_bias_fact = self.get_accel_bias()
+        accel_bias_fact = self.read_accel_offset()
         data = [0, 0, 0, 0, 0, 0]
         for i in range(3):
             accel_reg_bias = accel_bias_fact[i] - (accel_bias[i] & ~1)
             print("Set accel bias:", i, accel_reg_bias)
             data[i*2] = (accel_reg_bias >> 8) & 0xff
             data[i*2 + 1] = (accel_reg_bias & temp_comp_mask[i]) & 0xff
-        bus.write_byte_data(self.address, XA_OFFSET_H, data)
-
-    def get_gyro_bias(self):
-        gyro_bias = [0, 0, 0]
-
-        gyro_data = bus.read_i2c_block_data(self.address, XG_OFFSET_H, 6)
-        for i in range(3):
-            gyro_bias[i] = bytes_to_int16(gyro_data[i*2 + 1], gyro_data[i*2])
-        return gyro_bias
+        self.write_register_burst(XA_OFFSET_H, data)
 
     def set_gyro_bias(self, gyro_bias):
         data = [0, 0, 0, 0, 0, 0]
         for i in range(3):
             data[i*2] = (-gyro_bias[i] >> 8) & 0xff
             data[i*2 + 1] = -gyro_bias[i] & 0xff
-        bus.write_i2c_block_data(self.address, XG_OFFSET_H, data)
+        self.write_register_burst(XG_OFFSET_H, data)
 
     def search_device(self):
         """Check if WHO_AM_I register read equals DEVICE_ID"""
-        who_am_i = bus.read_byte_data(self.address, WHO_AM_I)
+        who_am_i = self.get_whoami()
         if(who_am_i == DEVICE_ID):
             return True
         else:
@@ -505,24 +1113,36 @@ class MPU6500:
 
     def check_data_ready(self):
         """Checks if data is ready to be read from sensor"""
-        drdy = bus.read_byte_data(self.address, INT_STATUS)
+        drdy = self.read_register(INT_STATUS)
         if drdy & 0x01:
             return True
         else:
             return False
 
+    def read_accel_gyro(self):
+        """Read gyroscope data and accelerometer data from FIFO"""
+        data = self.read_register_burst(FIFO_R_W, 12)
+        ax = (bytes_to_int16(data[1], data[0]) - self.accel_offs_x) * self.ares
+        ay = (bytes_to_int16(data[3], data[2]) - self.accel_offs_y) * self.ares
+        az = (bytes_to_int16(data[5], data[4]) - self.accel_offs_z) * self.ares
+        gx = (bytes_to_int16(data[7], data[6]) - self.gyro_offs_x) * self.gres
+        gy = (bytes_to_int16(data[9], data[8]) - self.gyro_offs_y) * self.gres
+        gz = (bytes_to_int16(data[11], data[10]) - self.gyro_offs_z) * self.gres
+
+        return (ax, ay, az, gx, gy, gz)
+        
     def read_accel(self):
         """Read accelerometer data from ACCEL_OUT register"""
-        data = bus.read_i2c_block_data(self.address, ACCEL_XOUT_H, 6)
+        data = self.read_register_burst(ACCEL_XOUT_H, 6)
         x = (bytes_to_int16(data[1], data[0]) - self.accel_offs_x) * self.ares
         y = (bytes_to_int16(data[3], data[2]) - self.accel_offs_y) * self.ares
         z = (bytes_to_int16(data[5], data[4]) - self.accel_offs_z) * self.ares
 
         return (x, y, z)
-
+    
     def read_gyro(self):
         """Read gyroscope data from GYRO_OUT register"""
-        data = bus.read_i2c_block_data(self.address, GYRO_XOUT_H, 6)
+        data = self.read_register_burst(GYRO_XOUT_H, 6)
         x = (bytes_to_int16(data[1], data[0]) - self.gyro_offs_x) * self.gres
         y = (bytes_to_int16(data[3], data[2]) - self.gyro_offs_y) * self.gres
         z = (bytes_to_int16(data[5], data[4]) - self.gyro_offs_z) * self.gres
@@ -531,7 +1151,7 @@ class MPU6500:
 
     def read_temperature(self):
         """Read temperature in degrees C"""
-        data = bus.read_i2c_block_data(self.address, TEMP_OUT, 2)
+        data = self.read_register_burst(TEMP_OUT, 2)
         temp = bytes_to_int16(data[1], data[0])
 
         temp = temp / 333.87 + 21.0

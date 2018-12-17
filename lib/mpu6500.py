@@ -161,6 +161,33 @@ SAMPLE_RATE_50HZ = 0x13
 CLK_20MHZ_OSC = 0x00
 CLK_AUTO = 0x01
 
+# Accel Full Scale Select Modes (g)
+AFS_2G = 0x00
+AFS_4G = 0x01
+AFS_8G = 0x02
+AFS_16G = 0x03
+
+#Full Scale Dictionary
+accel_full_scale_dict = {
+    0x00: 16384.0,
+    0x01: 8192.0,
+    0x02: 4096.0,
+    0x03: 2048.0
+}
+
+# Gyro Full Scale Select Modes (degrees/sec)
+GFS_250DPS = 0x00
+GFS_500DPS = 0x01
+GFS_1000DPS = 0x02
+GFS_2000DPS = 0x03
+
+gyro_full_scale_dict = {
+    0x00: 131.072,
+    0x01: 65.536,
+    0x02: 32.768,
+    0x03: 16.384
+}
+
 # DLPF Modes
 DLPF_GT_250HZ_4000HZ = 0x00
 DLPF_GT_184HZ_188HZ = 0x01
@@ -173,18 +200,6 @@ DLPF_GT_3600HZ_4000HZ = 0x07
 
 # FIFO Write Modes
 FIFO_MODE_NO_OVERWRITE = 0x40
-
-# Gyro Full Scale Select Modes (degrees/sec)
-GFS_250DPS = 0x00
-GFS_500DPS = 0x01
-GFS_1000DPS = 0x02
-GFS_2000DPS = 0x03
-
-# Accel Full Scale Select Modes (g)
-AFS_2G = 0x00
-AFS_4G = 0x01
-AFS_8G = 0x02
-AFS_16G = 0x03
 
 # Load I2C interface
 bus = smbus.SMBus(1)
@@ -1292,102 +1307,77 @@ class MPU6500:
         # Prepare accel offset data to write offsets to offset register
         # Remove gravity from the z-axis accelerometer bias calculation
         if(mean_accel[2] > 0):
-            mean_accel[2] -= (1 / self.ares)
+            mean_accel[2] -= self.ares
         else:
-            mean_accel[2] += (1 / self.ares)
+            mean_accel[2] += self.ares
         
         for i in range(3):
             mean_accel[i] = accel_offs_fact[i] - (mean_accel[i] / 4)
-
 
         self.set_accel_offs([int(round(x)) for x in mean_accel])
         self.set_gyro_offs_usr([-int(round(x)) for x in mean_gyro])
 
     def set_accel_mode(self, mode):
-        if mode == AFS_2G:
-            self.ares = 2.0 / 32768.0
-        elif mode == AFS_4G:
-            self.ares = 4.0 / 32768.0
-        elif mode == AFS_8G:
-            self.ares = 8.0 / 32768.0
-        elif mode == AFS_16G:
-            self.ares = 16.0 / 32768.0
-        else:
-            print("GFS Mode not available {}. Using default (AFS_2G).".format(gfs))
-            self.ares = 2.0 / 32768.0
+        try:
+            self.ares = accel_full_scale_dict[mode]
+        except KeyError:
+            print("Mode {} not available. Defaulting to AFS_8G".format(mode))
+            mode = AFS_8G
+            self.ares = accel_full_scale_dict[mode]
 
         self.set_accel_fs_sel(mode)
         
     def set_gyro_mode(self, mode):
-        if mode == GFS_250DPS:
-            self.gres = 250.0 / 32768.0
-        elif mode == GFS_500DPS:
-            self.gres = 500.0 / 32768.0
-        elif mode == GFS_1000DPS:
-            self.gres = 1000.0 / 32768.0
-        elif mode == GFS_2000DPS:
-            self.gres = 2000.0 / 32768.0
-        else:
-            print("GFS Mode not available {}. Using default (GFS_250).".format(gfs))
-            self.gres = 250.0 / 32768.0
+        try:
+            self.gres = gyro_full_scale_dict[mode]
+        except KeyError:
+            print("Mode {} not available. Defaulting to GFS_1000DPS".format(mode))
+            mode = GFS_1000DPS
+            self.gres = gyro_full_scale_dict[mode]
 
         self.set_gyro_fs_sel(mode)
 
     def search_device(self):
         """Check if WHO_AM_I register read equals DEVICE_ID"""
-        who_am_i = self.get_whoami()
-        if(who_am_i == DEVICE_ID):
-            return True
-        else:
-            return False
+        return (self.get_whoami() == DEVICE_ID)
 
     def check_data_ready(self):
         """Checks if data is ready to be read from sensor"""
-        drdy = self.read_register(INT_STATUS)
-        if drdy & 0x01:
-            return True
-        else:
-            return False
+        self.get_raw_data_ready_int()
 
     def read_accel_gyro(self):
         """Read gyroscope data and accelerometer data from FIFO."""
         _ax, _ay, _az, _gx, _gy, _gz = self.read_fifo_raw()
-        ax = (_ax - self.accel_offs_x) * self.ares
-        ay = (_ay - self.accel_offs_y) * self.ares
-        az = (_az - self.accel_offs_z) * self.ares
-        gx = (_gx - self.gyro_offs_x) * self.gres
-        gy = (_gy - self.gyro_offs_y) * self.gres
-        gz = (_gz - self.gyro_offs_z) * self.gres
+        ax = _ax / self.ares
+        ay = _ay / self.ares
+        az = _az / self.ares
+        gx = _gx / self.gres
+        gy = _gy / self.gres
+        gz = _gz / self.gres
 
         return (ax, ay, az, gx, gy, gz)
         
     def read_accel(self):
         """Read accelerometer data from ACCEL_OUT register."""
         _x, _y, _z = self.read_accel_raw()
-        x = (_x - self.accel_offs[0]) * self.ares
-#        x = _x * self.ares
-        y = (_y - self.accel_offs[1]) * self.ares
-#        y = _y * self.ares
-        z = (_z - self.accel_offs[2]) * self.ares
-#        z = _z * self.ares
+        x = _x / self.ares
+        y = _y / self.ares
+        z = _z / self.ares
 
         return (x, y, z)
     
     def read_gyro(self):
         """Read gyroscope data from GYRO_OUT register."""
         _x, _y, _z = self.read_gyro_raw()
-        x = (_x - self.gyro_offs[0]) * self.gres
-#        x = _x * self.gres
-        y = (_y - self.gyro_offs[1]) * self.gres
-#        y = _y * self.gres
-        z = (_z - self.gyro_offs[2]) * self.gres
-#        z = _z * self.gres
+        x = _x / self.gres
+        y = _y / self.gres
+        z = _z / self.gres
 
         return (x, y, z)
 
     def read_temperature(self):
         """Read temperature in degrees Celcius."""
-        temp_raw = self.read_temp_raw()
+        _temp = self.read_temp_raw()
 
-        temp = temp_raw / 333.87 + 21.0
+        temp = _temp / 333.87 + 21.0
         return temp

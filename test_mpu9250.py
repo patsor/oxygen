@@ -7,7 +7,7 @@ from __future__ import print_function
 import time
 import sys
 
-from mpu9250 import MPU9250
+from lib.mpu9250 import MPU9250
 from ahrs import AHRS
 
 def busy_wait(dt):
@@ -16,7 +16,7 @@ def busy_wait(dt):
         pass
 
 def main():
-    mpu9250 = MPU9250()
+    mpu9250 = MPU9250(False)
     beta = 0.9067
     dt = 0.002
     t0 = time.time()
@@ -47,7 +47,10 @@ def main():
 
 
             if i % 1000 == 0:
+
                 (yaw, pitch, roll) = ahrs._get_orientation()
+                print("Accel: {}, {}, {}".format(ax, ay, az))
+                print("Gyro: {}, {}, {}".format(gx, gy, gz))
                 print(yaw, pitch, roll)
                 
             i += 1

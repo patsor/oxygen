@@ -7,8 +7,8 @@ from mpu6500 import MPU6500
 
 class MPU9250:
 
-    def __init__(self):
-        self.mpu6500 = MPU6500()
+    def __init__(self, fifo_mode=False):
+        self.mpu6500 = MPU6500(0x68, fifo_mode)
         self.ak8963 = AK8963()
 
     def read_accel(self):

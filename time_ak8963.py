@@ -9,7 +9,7 @@ def main():
     
     setup = "ak8963 = AK8963();"
 
-    py = timeit.repeat("ak8963.read_magnet()", setup = "from ak8963 import AK8963; {}".format(setup), repeat=r, number=n)
+    py = timeit.repeat("ak8963.read_magnet()", setup = "from lib.ak8963 import AK8963; {}".format(setup), repeat=r, number=n)
     print("read_magnet (py): best of {}; {} usec per loop".format(r, min(py) / n * 1000000))
 
     

@@ -2,6 +2,9 @@
 Library for byte value conversions.
 """
 
+def to_bin_str(value):
+    return format(value, "08b")
+
 def set_bit(val, offs):
     """Set bit at offset 'offs' in value."""
     return val | (1 << offs)

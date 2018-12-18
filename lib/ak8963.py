@@ -6,6 +6,7 @@ import smbus
 import time
 
 from bitops import *
+from math_func import mean
 
 # AK8963 I2C slave address
 SLAVE_ADDRESS = 0x0C
@@ -34,109 +35,207 @@ ASAY = 0x11
 ASAZ = 0x12
 
 # CNTL1 Mode select
-## Power down mode
+# Power down mode
 MODE_DOWN = 0x00
-## One shot data output
+# One shot data output
 MODE_ONE = 0x01
-## FuseROM access mode
+# FuseROM access mode
 MODE_FUSEROM = 0x0f
 
-## Continous data output 8Hz
+# Continous data output 8Hz
 MODE_C8HZ = 0x02
-## Continous data output 100Hz
+# Continous data output 100Hz
 MODE_C100HZ = 0x06
 
 # Magneto Scale Select
-## 14bit output
+# 14bit output
 BIT_14 = 0x00
-## 16bit output
+# 16bit output
 BIT_16 = 0x01
 
-## smbus
+mag_full_scale_dict = {
+    0x00: 1.6673,
+    0x01: 6.6694
+}
+
 bus = smbus.SMBus(1)
 
-## AK8963 I2C Control class
 class AK8963:
     def __init__(self, address=SLAVE_ADDRESS):
         self.address = address
+        self.mag_offs = [0.0, 0.0, 0.0]
         self.configure()
-        self.sens_adj_x, self.sens_adj_y, self.sens_adj_z = self.get_sens_adj()
+#        self.calibrate()
+
+    def write_register(self, register, value):
+        bus.write_byte_data(self.address, register, value)
+
+    def read_register(self, register):
+        return bus.read_byte_data(self.address, register)
+
+    def read_register_burst(self, register, n):
+        return bus.read_i2c_block_data(self.address, register, n)
+
+    def write_register_burst(self, register, data):
+        bus.write_i2c_block_data(self.address, register, data)
+
+    def read_register_bit(self, register, index):
+        """Reads specific bit at 'index' from register."""
+        data = self.read_register(register)
+        return check_bit(data, index)
     
+    def write_register_bit(self, register, index, value):
+        """Write 'value' into specific bit at 'index' to register."""
+        data = self.read_register(register)
+        val = set_bit_value(data, index, value)
+        self.write_register(register, val)
+        
+
+    def get_device_id(self):
+        return self.read_register(WIA)
+
+    def get_info(self):
+        return self.read_register(INFO)
+
+    def get_data_ready(self):
+        return self.read_register_bit(ST1, 0)
+
+    def get_data_overrun(self):
+        return self.read_register_bit(ST1, 1)
+
+    def read_mag_x_raw(self):
+        data = self.read_register_burst(HXL, 2)
+        return bytes_to_int16(data[0], data[1])
+
+    def read_mag_y_raw(self):
+        data = self.read_register_burst(HYL, 2)
+        return bytes_to_int16(data[0], data[1])
+
+    def read_mag_z_raw(self):
+        data = self.read_register_burst(HZL, 2)
+        return bytes_to_int16(data[0], data[1])
+
+    def read_mag_raw(self):
+        # check data ready
+#        if self.get_data_ready():
+        data = self.read_register_burst(HXL, 7)
+        # check overflow
+        if not (data[6] & 0x08):
+            x = bytes_to_int16(data[0], data[1])
+            y = bytes_to_int16(data[2], data[3])
+            z = bytes_to_int16(data[4], data[5])
+            return (x, y, z)
+        return (0.0, 0.0, 0.0)
+
+    def get_mag_overflow(self):
+        return self.read_register_bit(ST2, 3)
+
+    def get_bit_mode_from_st2(self):
+        return self.read_register_bit(ST2, 4)
+
+    def get_operation_mode(self):
+        data = self.read_register(CNTL1)
+        return data & 0x0f
+
+    def set_operation_mode(self, value):
+        data = self.read_register(CNTL1)
+        val = set_bits(data, 0, 4, value)
+        self.write_register(CNTL1, value)
+
+    def get_bit_mode(self):
+        return self.read_register_bit(CNTL1, 4)
+
+    def set_bit_mode(self, value):
+        self.write_register_bit(CNTL1, 4, value)
+
+    def reset(self):
+        self.write_register(CNTL2, 0x01)
+
+    def set_i2c_disable(self):
+        self.write_register(I2CDIS, 0x1b)
+
     def configure(self):
         """Configure AK8963"""
         
         # set power down mode
-        bus.write_byte_data(self.address, CNTL1, MODE_DOWN)
+        self.set_operation_mode(MODE_DOWN)
         time.sleep(0.01)
 
         # set read FuseROM mode
-        bus.write_byte_data(self.address, CNTL1, MODE_FUSEROM)
+        self.set_operation_mode(MODE_FUSEROM)
         time.sleep(0.01)
+
+        self.sens_adj = self.get_sens_adj()
 
         # set power down mode
-        bus.write_byte_data(self.address, CNTL1, MODE_DOWN)
+        self.set_operation_mode(MODE_DOWN)
         time.sleep(0.01)
 
-        self.set_mode(BIT_16)
+        self.set_operation_mode(MODE_C100HZ)
+        time.sleep(0.01)
+
+        self.set_mag_mode(BIT_16)
 
     def get_sens_adj(self):
-        # read coef data
-        data = bus.read_i2c_block_data(self.address, ASAX, 3)
+        """Get sensitivity adjustment values."""
+        data = self.read_register_burst(ASAX, 3)
+        sens_adj = [1.0, 1.0, 1.0]
+        for i in range(3):
+            sens_adj[i] += (data[i] - 128) / 256.0
+        return sens_adj
 
-        sens_adj_x = (data[0] - 128) / 256.0 + 1.0
-        sens_adj_y = (data[1] - 128) / 256.0 + 1.0
-        sens_adj_z = (data[2] - 128) / 256.0 + 1.0
-        return (sens_adj_x, sens_adj_y, sens_adj_z)
-        
-    def calibrate(self):
+    def set_mag_mode(self, mode):
+        try:
+            self.mres = mag_full_scale_dict[mode]
+        except KeyError:
+            self.mres = mag_full_scale_dict[BIT_16]
+            mode = BIT_16
+
+        self.set_bit_mode(mode)
+
+
+    # TODO: Fix calibration, save values to external file
+    def calibrate(self, num_samples=512):
         """Calibrates sensors by writing offsets to specific registers"""
 
-        mag_bias = [0, 0, 0]
+        print("Calibrating, please do not move sensor...")
+        
+        mag_buff = [[], [], []]
+        mean_mag = [0.0, 0.0, 0.0]
 
-        for i in range(512):
-            mag = [0, 0, 0]
-            mag_data = bus.read_i2c_block_data(self.address, HXL, 7)
-            
+        time.sleep(1.0)
+        for i in range(num_samples):
+            mag = self.read_mag_raw()
             time.sleep(0.01)
-#            print("Read data:", accel_data, gyro_data)
             
             for i in range(3):
-                mag[i] = bytes_to_int16(mag_data[i*2], mag_data[i*2 + 1])
-                mag_bias[i] += mag[i]
-#            print("Read data (int):", accel, gyro)
+                mag_buff[i].append(mag[i])
 
         # Normalize sums to get average count biases
         for i in range(3):
-            mag_bias[i] = mag_bias[i] / 512
-        print("Calculated bias:", mag_bias)
+            mean_mag[i] = mean(mag_buff[i])
+
+        print("Done.")
+        print("MX (min={};mean={};max={}".format(
+            min(mag_buff[0]),
+            mean_mag[0],
+            max(mag_buff[0])))
+        print("MY (min={};mean={};max={}".format(
+            min(mag_buff[1]),
+            mean_mag[1],
+            max(mag_buff[1])))
+        print("MZ (min={};mean={};max={}".format(
+            min(mag_buff[2]),
+            mean_mag[2],
+            max(mag_buff[2])))
         
-        self.mag_bias = mag_bias
-
-    def set_mode(self, mode):
-        if mode == BIT_14:
-            self.mres = 4912.0 / 8190.0
-        elif mode == BIT_16:
-            self.mres = 4912.0 / 32760.0
-        else:
-            print("MFS Mode not available {}. Using default (BIT_16).".format(mode))
-            self.mres = 4912.0 / 32760.0
-
-        # set scale&continous mode
-        bus.write_byte_data(self.address, CNTL1, (mode << 4 | MODE_C8HZ))
-        time.sleep(0.01)
+        self.mag_offs = mean_mag
 
     def read_magnet(self):
         """Read magnetometer data from AK8963_MAGNET_OUT register"""
+        _x, _y, _z = self.read_mag_raw()
+        x = (_x - self.mag_offs[0]) / self.mres * self.sens_adj[0]
+        y = (_y - self.mag_offs[1]) / self.mres * self.sens_adj[1]
+        z = (_z - self.mag_offs[2]) / self.mres * self.sens_adj[2]
         
-        # check data ready
-        drdy = bus.read_byte_data(self.address, ST1)
-        if drdy & 0x01:
-            data = bus.read_i2c_block_data(self.address, HXL, 7)
-
-            # check overflow
-            if not (data[6] & 0x08):
-                x = bytes_to_int16(data[0], data[1]) * self.mres * self.sens_adj_x
-                y = bytes_to_int16(data[2], data[3]) * self.mres * self.sens_adj_y
-                z = bytes_to_int16(data[4], data[5]) * self.mres * self.sens_adj_z
-                return (x, y, z)
-        return (0.0, 0.0, 0.0)
+        return (x, y, z)

@@ -7,6 +7,7 @@ import smbus
 import time
 
 from bitops import *
+from math_func import mean
 
 # MPU9250 Default I2C slave address
 SLAVE_ADDRESS = 0x68
@@ -204,34 +205,18 @@ FIFO_MODE_NO_OVERWRITE = 0x40
 # Load I2C interface
 bus = smbus.SMBus(1)
 
-def mean(nums_list):
-    return float(sum(nums_list)) / len(nums_list)
-
-def to_bin_str(value):
-    return format(value, "08b")
-
 class MPU6500:
     """Holds all the sensor functionality."""
     
     def __init__(self, address=SLAVE_ADDRESS, fifo_mode=False):
         """Initialize sensor and calibrate."""
         self.address = address
-        self.accel_offs = [0, 0, 0]
-        self.gyro_offs = [0, 0, 0]
 
         self.configure(fifo_mode)
 
         self.print_cfg()
 
         self.calibrate(fifo_mode)
-
-    def read_register_burst(self, register, n):
-        """Reads n bytes from register with auto-increment."""
-        return bus.read_i2c_block_data(self.address, register, n)
-
-    def write_register_burst(self, register, data):
-        """Writes n bytes to register with auto-increment."""
-        bus.write_i2c_block_data(self.address, register, data)
 
     def read_register(self, register):
         """Reads value from register."""
@@ -240,6 +225,14 @@ class MPU6500:
     def write_register(self, register, value):
         """Writes value to register."""
         bus.write_byte_data(self.address, register, value)
+
+    def read_register_burst(self, register, n):
+        """Reads n bytes from register with auto-increment."""
+        return bus.read_i2c_block_data(self.address, register, n)
+
+    def write_register_burst(self, register, data):
+        """Writes n bytes to register with auto-increment."""
+        bus.write_i2c_block_data(self.address, register, data)
 
     def read_register_bit(self, register, index):
         """Reads specific bit at 'index' from register."""
@@ -333,6 +326,11 @@ class MPU6500:
     def set_self_test_accel(self, values):
         """Set accelerometer self test values of all axes."""
         self.write_register_burst(SELF_TEST_X_ACCEL, values)
+
+    def get_self_test(self):
+        accel = self.get_self_test_accel()
+        gyro = self.get_self_test_gyro()
+        return (accel, gyro)
 
     def get_gx_offs_usr(self):
         """Get gyroscope x-axis Offset."""
@@ -817,6 +815,7 @@ class MPU6500:
         return self.read_register_bit(INT_STATUS, 3)
 
     def get_raw_data_ready_int(self):
+        """Checks if data is ready to be read from sensor"""
         return self.read_register_bit(INT_STATUS, 0)
 
     def read_accel_x_raw(self):
@@ -1004,19 +1003,20 @@ class MPU6500:
     def set_fifo_rw(self, value):
         self.write_register(FIFO_RW, value)
 
-    def read_fifo_raw(self):
-        data = self.read_register_burst(FIFO_R_W, 12)
-        ax = bytes_to_int16(data[1], data[0])
-        ay = bytes_to_int16(data[3], data[2])
-        az = bytes_to_int16(data[5], data[4])
-        gx = bytes_to_int16(data[7], data[6])
-        gy = bytes_to_int16(data[9], data[8])
-        gz = bytes_to_int16(data[11], data[10])
-
-        return ((ax, ay, az), (gx, gy, gz))
+    def read_fifo_raw(self, n):
+        """Read n values from FIFO buffer (n*2 bytes)."""
+        data = self.read_register_burst(FIFO_R_W, n * 2)
+        values = []
+        for i in range(n):
+            values.append(bytes_to_int16(data[n+1], data[n]))
+        return values
 
     def get_whoami(self):
         return self.read_register(WHOAMI)
+
+    def search_device(self):
+        """Check if WHO_AM_I register read equals DEVICE_ID"""
+        return (self.get_whoami() == DEVICE_ID)
 
     def get_ax_offs(self):
         data = self.read_register_burst(XA_OFFS_H, 2)
@@ -1065,69 +1065,25 @@ class MPU6500:
         self.write_register(I2C_MST_CTRL, 0x00)
         self.set_i2c_mst_en(False)
 
-    def print_cfg(self):
-        print("Gyro Self Test", self.get_self_test_gyro())
-        print("Accel Self Test", self.get_self_test_accel())
-        print("Gyro Offsets", self.get_gyro_offs_usr())
-        print("Accel Offsets", self.get_accel_offs())
-        print("SMPLRT_DIV", self.get_smplrt_div())
-        # Main Configuration
-        print("Configuration")
-        print(to_bin_str(self.read_register(CONFIG)))
-        print("FIFO_MODE", self.get_fifo_mode())
-        print("EXT_FSYNC_SET", self.get_ext_fsync_set())
-        print("DLPF_CFG Gyro/Temp", self.get_gyro_temp_dlpf_cfg())
-        # Gyroscope Configuration
-        print("Gyroscope Configuration")
-        print(to_bin_str(self.read_register(GYRO_CONFIG)))
-        print("Gyro X Self Test Enabled", self.get_gx_st_en())
-        print("Gyro Y Self Test Enabled", self.get_gy_st_en())
-        print("Gyro Z Self Test Enabled", self.get_gz_st_en())
-        print("GYRO_FS_SEL", self.get_gyro_fs_sel())
-        print("FCHOICE_B", self.get_gyro_fchoice_b())
-        # Accelerometer Configuration
-        print("Accelerometer Configuration")
-        print(to_bin_str(self.read_register(ACCEL_CONFIG)))
-        print("Accel X Self Test Enabled", self.get_ax_st_en())
-        print("Accel Y Self Test Enabled", self.get_ay_st_en())
-        print("Accel Z Self Test Enabled", self.get_az_st_en())
-        print("ACCEL_FS_SEL", self.get_accel_fs_sel())
-        print("Accelerometer Configuration 2")
-        print(to_bin_str(self.read_register(ACCEL_CONFIG_2)))
-        print("FCHOICE_B", self.get_accel_fchoice_b())
-        print("DLPF_CFG Accel", self.get_accel_dlpf_cfg())
-        # WOM Threshold
-        print("WOM_THR", self.get_wom_threshold())
-        # FIFO_EN Configuration
-        print("FIFO Enable")
-        print(to_bin_str(self.read_register(FIFO_EN)))
-        print("FIFO TEMP_OUT", self.get_temp_fifo_en())
-        print("FIFO GYRO_XOUT", self.get_gx_fifo_en())
-        print("FIFO GYRO_YOUT", self.get_gy_fifo_en())
-        print("FIFO GYRO_ZOUT", self.get_gz_fifo_en())
-        print("FIFO ACCEL_OUT", self.get_accel_fifo_en())
-        print("FIFO SLV_2", self.get_slv2_fifo_en())
-        print("FIFO SLV_1", self.get_slv1_fifo_en())
-        print("FIFO SLV_0", self.get_slv0_fifo_en())
-        # I2C Master Control
-        print("I2C Master Control")
-        print(to_bin_str(self.read_register(I2C_MST_CTRL)))
-        print("MULT_MST_EN", self.get_mult_mst_en())
-        print("WAIT_FOR_ES", self.get_wait_for_es())
-        print("FIFO SLV_3", self.get_slv3_fifo_en())
-        print("I2C_MST_P_NSR", self.get_i2c_mst_p_nsr())
-        print("I2C_MST_CLK", self.get_i2c_mst_clk())
-        # User Control
-        print("User Control")
-        print(to_bin_str(self.read_register(USER_CTRL)))
-        print("FIFO_EN", self.get_fifo_en())
-        print("I2C_MST_EN", self.get_i2c_mst_en())
-        print("I2C_IF_DIS", self.get_i2c_interface_disable())
-        print("Power Management 1")
-        print(to_bin_str(self.read_register(PWR_MGMT_1)))
-        print("Clock Source", self.get_clock_source())
-        print("Power Management 2")
-        print(to_bin_str(self.read_register(PWR_MGMT_2)))
+    def set_accel_mode(self, mode):
+        try:
+            self.ares = accel_full_scale_dict[mode]
+        except KeyError:
+            print("Mode {} not available. Defaulting to AFS_8G".format(mode))
+            mode = AFS_8G
+            self.ares = accel_full_scale_dict[mode]
+
+        self.set_accel_fs_sel(mode)
+        
+    def set_gyro_mode(self, mode):
+        try:
+            self.gres = gyro_full_scale_dict[mode]
+        except KeyError:
+            print("Mode {} not available. Defaulting to GFS_1000DPS".format(mode))
+            mode = GFS_1000DPS
+            self.gres = gyro_full_scale_dict[mode]
+
+        self.set_gyro_fs_sel(mode)
 
     def configure(self, fifo_mode=False):
         if fifo_mode:
@@ -1202,10 +1158,59 @@ class MPU6500:
         # Set MST_CLK rate to 400kHz
 #        self.write_register(I2C_MST_CTRL, 0x09)
 
-    def self_test(self):
-        accel_data = self.read_register_burst(SELF_TEST_X_ACCEL, 3)
-        gyro_data = self.read_register_burst(SELF_TEST_X_GYRO, 3)
-#        print("Self test:", accel_data, gyro_data)
+    def print_cfg(self):
+        category_values = [
+            ["Gyro Self Test", self.get_self_test_gyro()],
+            ["Accel Self Test", self.get_self_test_accel()],
+            ["Gyro Offsets", self.get_gyro_offs_usr()],
+            ["Accel Offsets", self.get_accel_offs()],
+            ["SMPLRT_DIV", self.get_smplrt_div()],
+            ["Configuration", to_bin_str(self.read_register(CONFIG))],
+            ["FIFO_MODE", self.get_fifo_mode()],
+            ["EXT_FSYNC_SET", self.get_ext_fsync_set()],
+            ["DLPF_CFG Gyro/Temp", self.get_gyro_temp_dlpf_cfg()],
+            ["Gyroscope Configuration", to_bin_str(self.read_register(GYRO_CONFIG))],
+            
+            ["Gyro X Self Test Enabled", self.get_gx_st_en()],
+            ["Gyro Y Self Test Enabled", self.get_gy_st_en()],
+            ["Gyro Z Self Test Enabled", self.get_gz_st_en()],
+            ["GYRO_FS_SEL", self.get_gyro_fs_sel()],
+            ["FCHOICE_B", self.get_gyro_fchoice_b()],
+            ["Accelerometer Configuration", to_bin_str(self.read_register(ACCEL_CONFIG))],
+            ["Accel X Self Test Enabled", self.get_ax_st_en()],
+            ["Accel Y Self Test Enabled", self.get_ay_st_en()],
+            ["Accel Z Self Test Enabled", self.get_az_st_en()],
+            ["ACCEL_FS_SEL", self.get_accel_fs_sel()],
+            ["Accelerometer Configuration 2", to_bin_str(self.read_register(ACCEL_CONFIG_2))],
+            ["FCHOICE_B", self.get_accel_fchoice_b()],
+            ["DLPF_CFG Accel", self.get_accel_dlpf_cfg()],
+            ["WOM_THR", self.get_wom_threshold()],
+            ["FIFO Enable", to_bin_str(self.read_register(FIFO_EN))],
+            ["FIFO TEMP_OUT", self.get_temp_fifo_en()],
+            ["FIFO GYRO_XOUT", self.get_gx_fifo_en()],
+            ["FIFO GYRO_YOUT", self.get_gy_fifo_en()],
+            ["FIFO GYRO_ZOUT", self.get_gz_fifo_en()],
+            ["FIFO ACCEL_OUT", self.get_accel_fifo_en()],
+            ["FIFO SLV_2", self.get_slv2_fifo_en()],
+            ["FIFO SLV_1", self.get_slv1_fifo_en()],
+            ["FIFO SLV_0", self.get_slv0_fifo_en()],
+            ["I2C Master Control", to_bin_str(self.read_register(I2C_MST_CTRL))],
+            ["MULT_MST_EN", self.get_mult_mst_en()],
+            ["WAIT_FOR_ES", self.get_wait_for_es()],
+            ["FIFO SLV_3", self.get_slv3_fifo_en()],
+            ["I2C_MST_P_NSR", self.get_i2c_mst_p_nsr()],
+            ["I2C_MST_CLK", self.get_i2c_mst_clk()],
+            ["User Control", to_bin_str(self.read_register(USER_CTRL))],
+            ["FIFO_EN", self.get_fifo_en()],
+            ["I2C_MST_EN", self.get_i2c_mst_en()],
+            ["I2C_IF_DIS", self.get_i2c_interface_disable()],
+            ["Power Management 1", to_bin_str(self.read_register(PWR_MGMT_1))],
+            ["Clock Source", self.get_clock_source()],
+            ["Power Management 2", to_bin_str(self.read_register(PWR_MGMT_2))]
+        ]
+
+        for (key, val) in category_values:
+            print("{}: {}".format(key, val))
 
     def calibrate(self, fifo_mode=False):
         if fifo_mode:
@@ -1317,37 +1322,9 @@ class MPU6500:
         self.set_accel_offs([int(round(x)) for x in mean_accel])
         self.set_gyro_offs_usr([-int(round(x)) for x in mean_gyro])
 
-    def set_accel_mode(self, mode):
-        try:
-            self.ares = accel_full_scale_dict[mode]
-        except KeyError:
-            print("Mode {} not available. Defaulting to AFS_8G".format(mode))
-            mode = AFS_8G
-            self.ares = accel_full_scale_dict[mode]
-
-        self.set_accel_fs_sel(mode)
-        
-    def set_gyro_mode(self, mode):
-        try:
-            self.gres = gyro_full_scale_dict[mode]
-        except KeyError:
-            print("Mode {} not available. Defaulting to GFS_1000DPS".format(mode))
-            mode = GFS_1000DPS
-            self.gres = gyro_full_scale_dict[mode]
-
-        self.set_gyro_fs_sel(mode)
-
-    def search_device(self):
-        """Check if WHO_AM_I register read equals DEVICE_ID"""
-        return (self.get_whoami() == DEVICE_ID)
-
-    def check_data_ready(self):
-        """Checks if data is ready to be read from sensor"""
-        self.get_raw_data_ready_int()
-
     def read_accel_gyro(self):
         """Read gyroscope data and accelerometer data from FIFO."""
-        _ax, _ay, _az, _gx, _gy, _gz = self.read_fifo_raw()
+        _ax, _ay, _az, _gx, _gy, _gz = self.read_fifo_raw(6)
         ax = _ax / self.ares
         ay = _ay / self.ares
         az = _az / self.ares

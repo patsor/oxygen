@@ -51,6 +51,7 @@ def main():
                 (yaw, pitch, roll) = ahrs._get_orientation()
                 print("Accel: {}, {}, {}".format(ax, ay, az))
                 print("Gyro: {}, {}, {}".format(gx, gy, gz))
+                print("Mag: {}, {}, {}".format(mx, my, mz))
                 print(yaw, pitch, roll)
                 
             i += 1

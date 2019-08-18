@@ -3,9 +3,9 @@ Implementation of the MPU6500 6-DOF sensor chip
 (Accelerometer, Gyroscope)
 """
 
-import smbus
 import time
 
+from i2c import I2CDevice
 from bitops import *
 from math_func import mean
 
@@ -202,15 +202,12 @@ DLPF_GT_3600HZ_4000HZ = 0x07
 # FIFO Write Modes
 FIFO_MODE_NO_OVERWRITE = 0x40
 
-# Load I2C interface
-bus = smbus.SMBus(1)
-
 class MPU6500:
     """Holds all the sensor functionality."""
     
     def __init__(self, address=SLAVE_ADDRESS, fifo_mode=False):
         """Initialize sensor and calibrate."""
-        self.address = address
+        self.device = I2CDevice(address)
 
         self.configure(fifo_mode)
 
@@ -218,114 +215,87 @@ class MPU6500:
 
         self.calibrate(fifo_mode)
 
-    def read_register(self, register):
-        """Reads value from register."""
-        return bus.read_byte_data(self.address, register)
-
-    def write_register(self, register, value):
-        """Writes value to register."""
-        bus.write_byte_data(self.address, register, value)
-
-    def read_register_burst(self, register, n):
-        """Reads n bytes from register with auto-increment."""
-        return bus.read_i2c_block_data(self.address, register, n)
-
-    def write_register_burst(self, register, data):
-        """Writes n bytes to register with auto-increment."""
-        bus.write_i2c_block_data(self.address, register, data)
-
-    def read_register_bit(self, register, index):
-        """Reads specific bit at 'index' from register."""
-        data = self.read_register(register)
-        return check_bit(data, index)
-
-    def write_register_bit(self, register, index, value):
-        """Write 'value' into specific bit at 'index' to register."""
-        data = self.read_register(register)
-        val = set_bit_value(data, index, value)
-        self.write_register(register, val)
-
     def get_self_test_x_gyro(self):
         """Get gyroscope x-axis self test output.
 
         This value is generated during manufacturing tests.
         """
-        return self.read_register(SELF_TEST_X_GYRO)
+        return self.device.read_register(SELF_TEST_X_GYRO)
 
     def set_self_test_x_gyro(self, value):
         """Set gyroscope x-axis self test value."""
-        self.write_register(SELF_TEST_X_GYRO, value)
+        self.device.write_register(SELF_TEST_X_GYRO, value)
 
     def get_self_test_y_gyro(self):
         """Get gyroscope y-axis self test output.
 
         This value is generated during manufacturing tests.
         """
-        return self.read_register(SELF_TEST_Y_GYRO)
+        return self.device.read_register(SELF_TEST_Y_GYRO)
 
     def set_self_test_y_gyro(self, value):
         """Set gyroscope y-axis self test value."""
-        self.write_register(SELF_TEST_Y_GYRO, value)
+        self.device.write_register(SELF_TEST_Y_GYRO, value)
 
     def get_self_test_z_gyro(self):
         """Get gyroscope z-axis self test output.
 
         This value is generated during manufacturing tests.
         """
-        return self.read_register(SELF_TEST_Z_GYRO)
+        return self.device.read_register(SELF_TEST_Z_GYRO)
 
     def set_self_test_z_gyro(self, value):
         """Set gyroscope z-axis self test value."""
-        self.write_register(SELF_TEST_Z_GYRO, value)
+        self.device.write_register(SELF_TEST_Z_GYRO, value)
 
     def get_self_test_gyro(self):
         """Get gyroscope self test output from all axes."""
-        return self.read_register_burst(SELF_TEST_X_GYRO, 3)
+        return self.device.read_register_burst(SELF_TEST_X_GYRO, 3)
 
     def set_self_test_gyro(self, values):
         """Set gyroscope self test values of all axes."""
-        self.write_register_burst(SELF_TEST_X_GYRO, values)
+        self.device.write_register_burst(SELF_TEST_X_GYRO, values)
 
     def get_self_test_x_accel(self):
         """Get accelerometer x-axis self test output.
 
         This value is generated during manufacturing tests.
         """
-        return self.read_register(SELF_TEST_X_ACCEL)
+        return self.device.read_register(SELF_TEST_X_ACCEL)
 
     def set_self_test_x_accel(self, value):
         """Set accelerometer x-axis self test value."""
-        self.write_register(SELF_TEST_X_ACCEL, value)
+        self.device.write_register(SELF_TEST_X_ACCEL, value)
 
     def get_self_test_y_accel(self):
         """Get accelerometer y-axis self test output.
 
         This value is generated during manufacturing tests.
         """
-        return self.read_register(SELF_TEST_Y_ACCEL)
+        return self.device.read_register(SELF_TEST_Y_ACCEL)
 
     def set_self_test_y_accel(self, value):
         """Set accelerometer y-axis self test value."""
-        self.write_register(SELF_TEST_Y_ACCEL, value)
+        self.device.write_register(SELF_TEST_Y_ACCEL, value)
 
     def get_self_test_z_accel(self):
         """Get accelerometer z-axis self test output.
 
         This value is generated during manufacturing tests.
         """
-        return self.read_register(SELF_TEST_Z_ACCEL)
+        return self.device.read_register(SELF_TEST_Z_ACCEL)
 
     def set_self_test_z_accel(self, value):
         """Set accelerometer z-axis self test value."""
-        self.write_register(SELF_TEST_Z_ACCEL, value)
+        self.device.write_register(SELF_TEST_Z_ACCEL, value)
 
     def get_self_test_accel(self):
         """Get accelerometer self test output from all axes."""
-        return self.read_register_burst(SELF_TEST_X_ACCEL, 3)
+        return self.device.read_register_burst(SELF_TEST_X_ACCEL, 3)
 
     def set_self_test_accel(self, values):
         """Set accelerometer self test values of all axes."""
-        self.write_register_burst(SELF_TEST_X_ACCEL, values)
+        self.device.write_register_burst(SELF_TEST_X_ACCEL, values)
 
     def get_self_test(self):
         accel = self.get_self_test_accel()
@@ -334,37 +304,37 @@ class MPU6500:
 
     def get_gx_offs_usr(self):
         """Get gyroscope x-axis Offset."""
-        data = self.read_register_burst(XG_OFFS_USR_H, 2)
+        data = self.device.read_register_burst(XG_OFFS_USR_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def set_gx_offs_usr(self, value):
         """Set gyroscope x-axis offset."""
         (b0, b1) = int16_to_bytes(value)
-        self.write_register_burst(XG_OFFS_USR_H, [b1, b0])
+        self.device.write_register_burst(XG_OFFS_USR_H, [b1, b0])
 
     def get_gy_offs_usr(self):
         """Get gyroscope y-axis offset."""
-        data = self.read_register_burst(YG_OFFS_USR_H, 2)
+        data = self.device.read_register_burst(YG_OFFS_USR_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def set_gy_offs_usr(self, value):
         """Set gyroscope y-axis offset."""
         (b0, b1) = int16_to_bytes(value)
-        self.write_register_burst(YG_OFFS_USR_H, [b1, b0])
+        self.device.write_register_burst(YG_OFFS_USR_H, [b1, b0])
 
     def get_gz_offs_usr(self):
         """Get gyroscope z-axis offset."""
-        data = self.read_register_burst(ZG_OFFS_USR_H, 2)
+        data = self.device.read_register_burst(ZG_OFFS_USR_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def set_gz_offs_usr(self, value):
         """Set gyroscope z-axis offset."""
         (b0, b1) = int16_to_bytes(value)
-        self.write_register_burst(ZG_OFFS_USR_H, [b1, b0])
+        self.device.write_register_burst(ZG_OFFS_USR_H, [b1, b0])
 
     def get_gyro_offs_usr(self):
         """Get gyroscope offset for all axes."""
-        data = self.read_register_burst(XG_OFFS_USR_H, 6)
+        data = self.device.read_register_burst(XG_OFFS_USR_H, 6)
         x = bytes_to_int16(data[1], data[0])
         y = bytes_to_int16(data[3], data[2])
         z = bytes_to_int16(data[5], data[4])
@@ -376,151 +346,151 @@ class MPU6500:
         y_l, y_h = int16_to_bytes(values[1])
         z_l, z_h = int16_to_bytes(values[2])
         data = [x_h, x_l, y_h, y_l, z_h, z_l]
-        self.write_register_burst(XG_OFFS_USR_H, data)
+        self.device.write_register_burst(XG_OFFS_USR_H, data)
 
     def get_smplrt_div(self):
         """Get sample rate divider value."""
-        return self.read_register(SMPLRT_DIV)
+        return self.device.read_register(SMPLRT_DIV)
 
     def set_smplrt_div(self, value):
         """Set sample rate divider value."""
-        self.write_register(SMPLRT_DIV, value)
+        self.device.write_register(SMPLRT_DIV, value)
 
     def get_fifo_mode(self):
         """Get FIFO write mode."""
-        return self.read_register_bit(CONFIG, 6)
+        return self.device.read_register_bit(CONFIG, 6)
         
     def set_fifo_mode(self, value):
         """Set FIFO write mode."""
-        self.write_register_bit(CONFIG, 6, value)
+        self.device.write_register_bit(CONFIG, 6, value)
 
     def get_ext_fsync_set(self):
         """Get external FSYNC setup."""
-        data = self.read_register(CONFIG)
+        data = self.device.read_register(CONFIG)
         return data & 0x38
 
     def set_ext_fsync_set(self, value):
         """Set external FSYNC setup."""
-        data = self.read_register(CONFIG)
+        data = self.device.read_register(CONFIG)
         val = set_bits(data, 3, 3, value)
-        self.write_register(CONFIG, val)
+        self.device.write_register(CONFIG, val)
 
     def get_gyro_temp_dlpf_cfg(self):
         """Get gyrscope and temperature sensor DLPF config."""
-        data = self.read_register(CONFIG)
+        data = self.device.read_register(CONFIG)
         return data & 0x07
 
     def set_gyro_temp_dlpf_cfg(self, value):
         """Set gyroscope and temperature sensor DLPF config."""
-        data = self.read_register(CONFIG)
+        data = self.device.read_register(CONFIG)
         val = set_bits(data, 0, 3, value)
-        self.write_register(CONFIG, val)
+        self.device.write_register(CONFIG, val)
 
     # Gyroscope Configuration Methods
         
     def get_gx_st_en(self):
         """Get gyroscope self test enabled value for x-axis."""
-        return self.read_register_bit(GYRO_CONFIG, 7)
+        return self.device.read_register_bit(GYRO_CONFIG, 7)
 
     def set_gx_st_en(self, value):
         """Set gyroscope self test enabled value for x-axis."""
-        self.write_register_bit(GYRO_CONFIG, 7, value)
+        self.device.write_register_bit(GYRO_CONFIG, 7, value)
 
     def get_gy_st_en(self):
         """Get gyroscope self test enabled value for y-axis."""
-        return self.read_register_bit(GYRO_CONFIG, 6)
+        return self.device.read_register_bit(GYRO_CONFIG, 6)
 
     def set_gy_st_en(self, value):
         """Set gyroscope self test enabled value for y-axis."""
-        self.write_register_bit(GYRO_CONFIG, 6, value)
+        self.device.write_register_bit(GYRO_CONFIG, 6, value)
 
     def get_gz_st_en(self):
         """Get gyroscope self test enabled value for z-axis."""
-        return self.read_register_bit(GYRO_CONFIG, 5)
+        return self.device.read_register_bit(GYRO_CONFIG, 5)
 
     def set_gz_st_en(self, value):
         """Set gyroscope self test enabled value for z-axis."""
-        self.write_register_bit(GYRO_CONFIG, 5, value)
+        self.device.write_register_bit(GYRO_CONFIG, 5, value)
 
     def get_gyro_fs_sel(self):
         """Get gyroscope full scale select mode."""
-        data = self.read_register(GYRO_CONFIG)
+        data = self.device.read_register(GYRO_CONFIG)
         return (data & 0x18) >> 3
 
     def set_gyro_fs_sel(self, value):
         """Set gyroscope full scale select mode."""
-        data = self.read_register(GYRO_CONFIG)
+        data = self.device.read_register(GYRO_CONFIG)
         val = set_bits(data, 3, 2, value)
-        self.write_register(GYRO_CONFIG, val)
+        self.device.write_register(GYRO_CONFIG, val)
 
     def get_gyro_fchoice_b(self):
         """Get gyroscope FCHOICE_B value (inverted to FCHOICE)."""
-        data = self.read_register(GYRO_CONFIG)
+        data = self.device.read_register(GYRO_CONFIG)
         return data & 0x03
 
     def set_gyro_fchoice_b(self, value):
         """Set gyroscope FCHOICE_B value (inverted FCHOICE)."""
-        data = self.read_register(GYRO_CONFIG)
+        data = self.device.read_register(GYRO_CONFIG)
         val = set_bits(data, 0, 2, value)
-        self.write_register(GYRO_CONFIG, val)
+        self.device.write_register(GYRO_CONFIG, val)
 
     # Accelerometer Configuration Methods
 
     def get_ax_st_en(self):
         """Get accelerometer self test enabled value for x-axis."""
-        return self.read_register_bit(ACCEL_CONFIG, 7)
+        return self.device.read_register_bit(ACCEL_CONFIG, 7)
 
     def set_ax_st_en(self, value):
         """Set accelerometer self test enabled value for x-axis."""
-        self.write_register_bit(ACCEL_CONFIG, 7, value)
+        self.device.write_register_bit(ACCEL_CONFIG, 7, value)
 
     def get_ay_st_en(self):
         """Get accelerometer self test enabled value for y-axis."""
-        return self.read_register_bit(ACCEL_CONFIG, 6)
+        return self.device.read_register_bit(ACCEL_CONFIG, 6)
 
     def set_ay_st_en(self, value):
         """Set accelerometer self test enabled value for y-axis."""
-        self.write_register_bit(ACCEL_CONFIG, 6, value)
+        self.device.write_register_bit(ACCEL_CONFIG, 6, value)
 
     def get_az_st_en(self):
         """Get accelerometer self test enabled value for z-axis."""
-        return self.read_register_bit(ACCEL_CONFIG, 5)
+        return self.device.read_register_bit(ACCEL_CONFIG, 5)
 
     def set_az_st_en(self, value):
         """Set accelerometer self test enabled value for z-axis."""
-        self.write_register_bit(ACCEL_CONFIG, 5, value)
+        self.device.write_register_bit(ACCEL_CONFIG, 5, value)
 
     def get_accel_fs_sel(self):
         """Get accelerometer full scale select mode."""
-        data = self.read_register(ACCEL_CONFIG)
+        data = self.device.read_register(ACCEL_CONFIG)
         return (data & 0x18) >> 3
 
     def set_accel_fs_sel(self, value):
         """Set accelerometer full scale select mode."""
-        data = self.read_register(ACCEL_CONFIG)
+        data = self.device.read_register(ACCEL_CONFIG)
         val = set_bits(data, 3, 2, value)
-        self.write_register(ACCEL_CONFIG, val)
+        self.device.write_register(ACCEL_CONFIG, val)
 
     # Accelerometer Configuration 2 Methods
         
     def get_accel_fchoice_b(self):
         """Get accelerometer FCHOICE_B value (inverted to FCHOICE)."""
-        return self.read_register_bit(ACCEL_CONFIG_2, 3)
+        return self.device.read_register_bit(ACCEL_CONFIG_2, 3)
 
     def set_accel_fchoice_b(self, value):
         """Get accelerometer FCHOICE_B value (inverted to FCHOICE)."""
-        self.write_register_bit(ACCEL_CONFIG_2, 3, value)
+        self.device.write_register_bit(ACCEL_CONFIG_2, 3, value)
 
     def get_accel_dlpf_cfg(self):
         """Get accelerometer DLPF config."""
-        data = self.read_register(ACCEL_CONFIG_2)
+        data = self.device.read_register(ACCEL_CONFIG_2)
         return data & 0x07
         
     def set_accel_dlpf_cfg(self, value):
         """Set accelerometer DLPF config."""
-        data = self.read_register(ACCEL_CONFIG_2)
+        data = self.device.read_register(ACCEL_CONFIG_2)
         val = set_bits(data, 0, 3, value)
-        self.write_register(ACCEL_CONFIG_2, val)
+        self.device.write_register(ACCEL_CONFIG_2, val)
 
     def get_accel_lp_odr(self):
         """Get accelerometer low power ODR (Output Data Rate).
@@ -528,7 +498,7 @@ class MPU6500:
         This is the frequency of waking up the chip to take
         a sample of accel data.
         """
-        data = self.read_register(LP_ACCEL_ODR)
+        data = self.device.read_register(LP_ACCEL_ODR)
         return data & 0x0f
 
     def set_accel_lp_odr(self, value):
@@ -537,17 +507,17 @@ class MPU6500:
         This is the frequency of waking up the chip to take
         a sample of accel data.
         """
-        data = self.read_register(LP_ACCEL_ODR)
+        data = self.device.read_register(LP_ACCEL_ODR)
         val = set_bits(data, 0, 4, value)
-        self.write_register(LP_ACCEL_ODR, val)
+        self.device.write_register(LP_ACCEL_ODR, val)
 
     def get_wom_threshold(self):
         """Get Wake-on Motion Threshold."""
-        return self.read_register(WOM_THR)
+        return self.device.read_register(WOM_THR)
         
     def set_wom_threshold(self, value):
         """Set Wake-on Motion Threshold."""
-        self.write_register(WOM_THR, value)
+        self.device.write_register(WOM_THR, value)
 
     def get_temp_fifo_en(self):
         """Return temperature sensor FIFO enabled status.
@@ -556,7 +526,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        return self.read_register_bit(FIFO_EN, 7)
+        return self.device.read_register_bit(FIFO_EN, 7)
 
     def set_temp_fifo_en(self, value):
         """Set temperature sensor FIFO enabled status.
@@ -565,7 +535,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        self.write_register_bit(FIFO_EN, 7, value)
+        self.device.write_register_bit(FIFO_EN, 7, value)
 
     def get_gx_fifo_en(self):
         """Return gyroscope x-axis FIFO enabled status.
@@ -574,7 +544,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        return self.read_register_bit(FIFO_EN, 6)
+        return self.device.read_register_bit(FIFO_EN, 6)
 
     def set_gx_fifo_en(self, value):
         """Set gyroscope x-axis FIFO enabled status.
@@ -583,7 +553,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        self.write_register_bit(FIFO_EN, 6, value)
+        self.device.write_register_bit(FIFO_EN, 6, value)
 
     def get_gy_fifo_en(self):
         """Return gyroscope y-axis FIFO enabled status.
@@ -592,7 +562,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        return self.read_register_bit(FIFO_EN, 5)
+        return self.device.read_register_bit(FIFO_EN, 5)
 
     def set_gy_fifo_en(self, value):
         """Set gyroscope y-axis FIFO enabled status.
@@ -601,7 +571,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        self.write_register_bit(FIFO_EN, 5, value)
+        self.device.write_register_bit(FIFO_EN, 5, value)
 
     def get_gz_fifo_en(self):
         """Return gyroscope z-axis FIFO enabled status.
@@ -610,7 +580,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        return self.read_register_bit(FIFO_EN, 4)
+        return self.device.read_register_bit(FIFO_EN, 4)
 
     def set_gz_fifo_en(self, value):
         """Set gyroscope z-axis FIFO enabled status.
@@ -619,7 +589,7 @@ class MPU6500:
         0 - function is disabled
         NOTE: If enabled, buffering of data occurs even if data path is in standby.
         """
-        self.write_register_bit(FIFO_EN, 4, value)
+        self.device.write_register_bit(FIFO_EN, 4, value)
 
     def get_accel_fifo_en(self):
         """Get accelerometer FIFO enabled status.
@@ -628,7 +598,7 @@ class MPU6500:
         ACCEL_ZOUT_H and ACCEL_ZOUT_L to the FIFO at the sample rate;
         0 - function is disabled
         """
-        return self.read_register_bit(FIFO_EN, 3)
+        return self.device.read_register_bit(FIFO_EN, 3)
 
     def set_accel_fifo_en(self, value):
         """Set accelerometer FIFO enabled status.
@@ -637,7 +607,7 @@ class MPU6500:
         ACCEL_ZOUT_H and ACCEL_ZOUT_L to the FIFO at the sample rate;
         0 - function is disabled
         """
-        self.write_register_bit(FIFO_EN, 3, value)
+        self.device.write_register_bit(FIFO_EN, 3, value)
 
     def get_slv2_fifo_en(self):
         """Get SLV_2 FIFO enabled status.
@@ -645,7 +615,7 @@ class MPU6500:
         1 - Write EXT_SENS_DATA registers associated to SLV_2 to the FIFO at the sample rate;
         0 - function is disabled
         """
-        return self.read_register_bit(FIFO_EN, 2)
+        return self.device.read_register_bit(FIFO_EN, 2)
 
     def set_slv2_fifo_en(self, value):
         """Set SLV_2 FIFO enabled status.
@@ -653,7 +623,7 @@ class MPU6500:
         1 - Write EXT_SENS_DATA registers associated to SLV_2 to the FIFO at the sample rate;
         0 - function is disabled
         """
-        self.write_register_bit(FIFO_EN, 2, value)
+        self.device.write_register_bit(FIFO_EN, 2, value)
 
     def get_slv1_fifo_en(self):
         """Get SLV_1 FIFO enabled status.
@@ -661,7 +631,7 @@ class MPU6500:
         1 - Write EXT_SENS_DATA registers associated to SLV_1 to the FIFO at the sample rate;
         0 - function is disabled
         """
-        return self.read_register_bit(FIFO_EN, 1)
+        return self.device.read_register_bit(FIFO_EN, 1)
 
     def set_slv1_fifo_en(self, value):
         """Set SLV_1 FIFO enabled status.
@@ -669,7 +639,7 @@ class MPU6500:
         1 - Write EXT_SENS_DATA registers associated to SLV_1 to the FIFO at the sample rate;
         0 - function is disabled
         """
-        self.write_register_bit(FIFO_EN, 1, value)
+        self.device.write_register_bit(FIFO_EN, 1, value)
 
     def get_slv0_fifo_en(self):
         """Get SLV_0 FIFO enabled status.
@@ -677,7 +647,7 @@ class MPU6500:
         1 - Write EXT_SENS_DATA registers associated to SLV_0 to the FIFO at the sample rate;
         0 - function is disabled
         """
-        return self.read_register_bit(FIFO_EN, 0)
+        return self.device.read_register_bit(FIFO_EN, 0)
 
     def set_slv0_fifo_en(self, value):
         """Set SLV_0 FIFO enabled status.
@@ -685,362 +655,362 @@ class MPU6500:
         1 - Write EXT_SENS_DATA registers associated to SLV_0 to the FIFO at the sample rate;
         0 - function is disabled
         """
-        self.write_register_bit(FIFO_EN, 0, value)
+        self.device.write_register_bit(FIFO_EN, 0, value)
 
     def set_accel_gyro_fifo_en(self):
         """Set accelerometer and gyroscope FIFO enabled status."""
-        data = self.read_register(FIFO_EN)
+        data = self.device.read_register(FIFO_EN)
         val = set_bits(data, 3, 4, 0x0f)
-        self.write_register(FIFO_EN, val)
+        self.device.write_register(FIFO_EN, val)
 
     def get_mult_mst_en(self):
-        return self.read_register_bit(I2C_MST_CTRL, 7)
+        return self.device.read_register_bit(I2C_MST_CTRL, 7)
 
     def set_mult_mst_en(self, value):
-        self.write_register_bit(I2C_MST_CTRL, 7, value)
+        self.device.write_register_bit(I2C_MST_CTRL, 7, value)
 
     def get_wait_for_es(self):
-        return self.read_register_bit(I2C_MST_CTRL, 6)
+        return self.device.read_register_bit(I2C_MST_CTRL, 6)
 
     def set_wait_for_es(self, value):
-        self.write_register_bit(I2C_MST_CTRL, 6, value)
+        self.device.write_register_bit(I2C_MST_CTRL, 6, value)
 
     def get_slv3_fifo_en(self):
-        return self.read_register_bit(I2C_MST_CTRL, 5)
+        return self.device.read_register_bit(I2C_MST_CTRL, 5)
 
     def set_slv3_fifo_en(self, value):
-        self.write_register_bit(I2C_MST_CTRL, 5, value)
+        self.device.write_register_bit(I2C_MST_CTRL, 5, value)
 
     def get_i2c_mst_p_nsr(self):
-        return self.read_register_bit(I2C_MST_CTRL, 4)
+        return self.device.read_register_bit(I2C_MST_CTRL, 4)
 
     def set_i2c_mst_p_nsr(self, value):
-        self.write_register_bit(I2C_MST_CTRL, 4, value)
+        self.device.write_register_bit(I2C_MST_CTRL, 4, value)
 
     def get_i2c_mst_clk(self):
-        data = self.read_register(I2C_MST_CTRL)
+        data = self.device.read_register(I2C_MST_CTRL)
         return data & 0x0f
 
     def set_i2c_mst_clk(self, value):
-        data = self.read_register(I2C_MST_CTRL)
+        data = self.device.read_register(I2C_MST_CTRL)
         val = set_bits(data, 0, 4, value)
-        self.write_register(I2C_MST_CTRL, val)
+        self.device.write_register(I2C_MST_CTRL, val)
         
     ## Getters and setters for I2C Slave devices and external sensor data ####
     # TODO: create
     ##
 
     def get_int_pin_active_low(self):
-        return self.read_register_bit(INT_PIN_CFG, 7)
+        return self.device.read_register_bit(INT_PIN_CFG, 7)
 
     def set_int_pin_active_low(self, value):
-        self.write_register_bit(INT_PIN_CFG, 7, value)
+        self.device.write_register_bit(INT_PIN_CFG, 7, value)
 
     def get_int_pin_open_drain(self):
-        return self.read_register_bit(INT_PIN_CFG, 6)
+        return self.device.read_register_bit(INT_PIN_CFG, 6)
 
     def set_int_pin_open_drain(self, value):
-        self.write_register_bit(INT_PIN_CFG, 6, value)
+        self.device.write_register_bit(INT_PIN_CFG, 6, value)
 
     def get_int_pin_latch_int_en(self):
-        return self.read_register_bit(INT_PIN_CFG, 5)
+        return self.device.read_register_bit(INT_PIN_CFG, 5)
 
     def set_int_pin_latch_int_en(self, value):
-        self.write_register_bit(INT_PIN_CFG, 5, value)
+        self.device.write_register_bit(INT_PIN_CFG, 5, value)
 
     def get_int_pin_any_read_clear(self):
-        return self.read_register_bit(INT_PIN_CFG, 4)
+        return self.device.read_register_bit(INT_PIN_CFG, 4)
 
     def set_int_pin_any_read_clear(self, value):
-        self.write_register_bit(INT_PIN_CFG, 4, value)
+        self.device.write_register_bit(INT_PIN_CFG, 4, value)
 
     def get_int_pin_active_low_fsync(self):
-        return self.read_register_bit(INT_PIN_CFG, 3)
+        return self.device.read_register_bit(INT_PIN_CFG, 3)
 
     def set_int_pin_active_low_fsync(self, value):
-        self.write_register_bit(INT_PIN_CFG, 3, value)
+        self.device.write_register_bit(INT_PIN_CFG, 3, value)
 
     def get_int_pin_fsync_int_mode_en(self):
-        return self.read_register_bit(INT_PIN_CFG, 2)
+        return self.device.read_register_bit(INT_PIN_CFG, 2)
 
     def set_int_pin_fsync_int_mode_en(self, value):
-        self.write_register_bit(INT_PIN_CFG, 2, value)
+        self.device.write_register_bit(INT_PIN_CFG, 2, value)
 
     def get_int_pin_bypass_en(self):
-        return self.read_register_bit(INT_PIN_CFG, 1)
+        return self.device.read_register_bit(INT_PIN_CFG, 1)
 
     def set_int_pin_bypass_en(self, value):
         """
         Enable bypass mode of sensor 
         to allow third party sensor at I2C_AUX
         """
-        self.write_register_bit(INT_PIN_CFG, 1, value)
+        self.device.write_register_bit(INT_PIN_CFG, 1, value)
 
 
     def get_wom_en(self):
-        return self.read_register_bit(INT_ENABLE, 6)
+        return self.device.read_register_bit(INT_ENABLE, 6)
 
     def set_wom_en(self, value):
-        self.write_register_bit(INT_ENABLE, 6, value)
+        self.device.write_register_bit(INT_ENABLE, 6, value)
 
     def get_fifo_overflow_en(self):
-        return self.read_register_bit(INT_ENABLE, 4)
+        return self.device.read_register_bit(INT_ENABLE, 4)
 
     def set_fifo_overflow_en(self, value):
-        self.write_register_bit(INT_ENABLE, 4, value)
+        self.device.write_register_bit(INT_ENABLE, 4, value)
 
     def get_fsync_int_en(self):
-        return self.read_register_bit(INT_ENABLE, 3)
+        return self.device.read_register_bit(INT_ENABLE, 3)
 
     def set_fsync_int_en(self, value):
-        self.write_register_bit(INT_ENABLE, 3, value)
+        self.device.write_register_bit(INT_ENABLE, 3, value)
 
     def get_raw_ready_en(self):
-        return self.read_register_bit(INT_ENABLE, 0)
+        return self.device.read_register_bit(INT_ENABLE, 0)
 
     def set_raw_ready_en(self, value):
-        self.write_register_bit(INT_ENABLE, 0, value)
+        self.device.write_register_bit(INT_ENABLE, 0, value)
 
     def disable_interrupts(self):
         """Disable Interrupts"""
-        self.write_register(INT_ENABLE, 0x00)
+        self.device.write_register(INT_ENABLE, 0x00)
 
     def get_wom_int(self):
-        return self.read_register_bit(INT_STATUS, 6)
+        return self.device.read_register_bit(INT_STATUS, 6)
 
     def get_fifo_overflow_int(self):
-        return self.read_register_bit(INT_STATUS, 4)
+        return self.device.read_register_bit(INT_STATUS, 4)
 
     def get_fsync_int(self):
-        return self.read_register_bit(INT_STATUS, 3)
+        return self.device.read_register_bit(INT_STATUS, 3)
 
     def get_raw_data_ready_int(self):
         """Checks if data is ready to be read from sensor"""
-        return self.read_register_bit(INT_STATUS, 0)
+        return self.device.read_register_bit(INT_STATUS, 0)
 
     def read_accel_x_raw(self):
-        data = self.read_register_burst(ACCEL_XOUT_H, 2)
+        data = self.device.read_register_burst(ACCEL_XOUT_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def read_accel_y_raw(self):
-        data = self.read_register_burst(ACCEL_YOUT_H, 2)
+        data = self.device.read_register_burst(ACCEL_YOUT_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def read_accel_z_raw(self):
-        data = self.read_register_burst(ACCEL_ZOUT_H, 2)
+        data = self.device.read_register_burst(ACCEL_ZOUT_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def read_accel_raw(self):
-        data = self.read_register_burst(ACCEL_XOUT_H, 6)
+        data = self.device.read_register_burst(ACCEL_XOUT_H, 6)
         x = bytes_to_int16(data[1], data[0])
         y = bytes_to_int16(data[3], data[2])
         z = bytes_to_int16(data[5], data[4])
         return (x, y, z)
 
     def read_temp_raw(self):
-        data = self.read_register_burst(TEMP_OUT_H, 2)
+        data = self.device.read_register_burst(TEMP_OUT_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def read_gyro_x_raw(self):
-        data = self.read_register_burst(GYRO_XOUT_H, 2)
+        data = self.device.read_register_burst(GYRO_XOUT_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def read_gyro_y_raw(self):
-        data = self.read_register_burst(GYRO_YOUT_H, 2)
+        data = self.device.read_register_burst(GYRO_YOUT_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def read_gyro_z_raw(self):
-        data = self.read_register_burst(GYRO_ZOUT_H, 2)
+        data = self.device.read_register_burst(GYRO_ZOUT_H, 2)
         return bytes_to_int16(data[1], data[0])
 
     def read_gyro_raw(self):
-        data = self.read_register_burst(GYRO_XOUT_H, 6)
+        data = self.device.read_register_burst(GYRO_XOUT_H, 6)
         x = bytes_to_int16(data[1], data[0])
         y = bytes_to_int16(data[3], data[2])
         z = bytes_to_int16(data[5], data[4])
         return (x, y, z)
 
     def get_gyro_reset(self):
-        return self.read_register_bit(SIGNAL_PATH_RESET, 2)
+        return self.device.read_register_bit(SIGNAL_PATH_RESET, 2)
 
     def set_gyro_reset(self, value):
-        self.write_register_bit(SIGNAL_PATH_RESET, 2, value)
+        self.device.write_register_bit(SIGNAL_PATH_RESET, 2, value)
 
     def get_accel_reset(self):
-        return self.read_register_bit(SIGNAL_PATH_RESET, 1)
+        return self.device.read_register_bit(SIGNAL_PATH_RESET, 1)
 
     def set_accel_reset(self, value):
-        self.write_register_bit(SIGNAL_PATH_RESET, 1, value)
+        self.device.write_register_bit(SIGNAL_PATH_RESET, 1, value)
 
     def get_temp_reset(self):
-        return self.read_register_bit(SIGNAL_PATH_RESET, 0)
+        return self.device.read_register_bit(SIGNAL_PATH_RESET, 0)
 
     def set_temp_reset(self, value):
-        self.write_register_bit(SIGNAL_PATH_RESET, 0, value)
+        self.device.write_register_bit(SIGNAL_PATH_RESET, 0, value)
 
     def get_accel_intel_en(self):
-        return self.read_register_bit(ACCEL_INTEL_CTRL, 7)
+        return self.device.read_register_bit(ACCEL_INTEL_CTRL, 7)
 
     def set_accel_intel_en(self, value):
-        self.write_register_bit(ACCEL_INTEL_CTRL, 7, value)
+        self.device.write_register_bit(ACCEL_INTEL_CTRL, 7, value)
 
     def get_accel_intel_mode(self):
-        return self.read_register_bit(ACCEL_INTEL_CTRL, 6)
+        return self.device.read_register_bit(ACCEL_INTEL_CTRL, 6)
 
     def set_accel_intel_mode(self, value):
-        self.write_register_bit(ACCEL_INTEL_CTRL, 6, value)
+        self.device.write_register_bit(ACCEL_INTEL_CTRL, 6, value)
         
     def get_fifo_en(self):
-        return self.read_register_bit(USER_CTRL, 6)
+        return self.device.read_register_bit(USER_CTRL, 6)
 
     def set_fifo_en(self, value):
-        self.write_register_bit(USER_CTRL, 6, value)
+        self.device.write_register_bit(USER_CTRL, 6, value)
 
     def get_i2c_mst_en(self):
-        return self.read_register_bit(USER_CTRL, 5)
+        return self.device.read_register_bit(USER_CTRL, 5)
 
     def set_i2c_mst_en(self, value):
-        self.write_register_bit(USER_CTRL, 5, value)
+        self.device.write_register_bit(USER_CTRL, 5, value)
 
     def get_i2c_interface_disable(self):
-        return self.read_register_bit(USER_CTRL, 4)
+        return self.device.read_register_bit(USER_CTRL, 4)
 
     def set_i2c_interface_disable(self, value):
-        self.write_register_bit(USER_CTRL, 4, value)
+        self.device.write_register_bit(USER_CTRL, 4, value)
 
     def set_fifo_reset(self):
-        self.write_register_bit(USER_CTRL, 2, True)
+        self.device.write_register_bit(USER_CTRL, 2, True)
 
     def set_i2c_mst_reset(self):
-        self.write_register_bit(USER_CTRL, 1, True)
+        self.device.write_register_bit(USER_CTRL, 1, True)
 
     def set_signal_condition_reset(self):
-        self.write_register_bit(USER_CTRL, 0, True)
+        self.device.write_register_bit(USER_CTRL, 0, True)
 
     def set_h_reset(self):
-        self.write_register_bit(PWR_MGMT_1, 7, True)
+        self.device.write_register_bit(PWR_MGMT_1, 7, True)
 
     def set_sleep(self):
-        self.write_register_bit(PWR_MGMT_1, 6, True)
+        self.device.write_register_bit(PWR_MGMT_1, 6, True)
 
     def set_cycle(self):
-        self.write_register_bit(PWR_MGMT_1, 5, True)
+        self.device.write_register_bit(PWR_MGMT_1, 5, True)
 
     def set_gyro_standby(self):
-        self.write_register_bit(PWR_MGMT_1, 4, True)
+        self.device.write_register_bit(PWR_MGMT_1, 4, True)
 
     def set_power_down_ptat(self):
-        self.write_register_bit(PWR_MGMT_1, 3, True)
+        self.device.write_register_bit(PWR_MGMT_1, 3, True)
 
     def get_clock_source(self):
-        data = self.read_register(PWR_MGMT_1)
+        data = self.device.read_register(PWR_MGMT_1)
         return data & 0x07
 
     def set_clock_source(self, value):
-        data = self.read_register(PWR_MGMT_1)
+        data = self.device.read_register(PWR_MGMT_1)
         val = set_bits(data, 0, 3, value)
-        self.write_register(PWR_MGMT_1, val)
+        self.device.write_register(PWR_MGMT_1, val)
 
     def reset_pwr_mgmt_1(self):
-        self.write_register(PWR_MGMT_1, 0x00)
+        self.device.write_register(PWR_MGMT_1, 0x00)
 
     def get_disable_ax(self):
-        return self.read_register_bit(PWR_MGMT_2, 5)
+        return self.device.read_register_bit(PWR_MGMT_2, 5)
 
     def set_disable_ax(self, value):
-        self.write_register_bit(PWR_MGMT_2, 5)
+        self.device.write_register_bit(PWR_MGMT_2, 5)
 
     def get_disable_ay(self):
-        return self.read_register_bit(PWR_MGMT_2, 4)
+        return self.device.read_register_bit(PWR_MGMT_2, 4)
 
     def set_disable_ay(self, value):
-        self.write_register_bit(PWR_MGMT_2, 4)
+        self.device.write_register_bit(PWR_MGMT_2, 4)
 
     def get_disable_az(self):
-        return self.read_register_bit(PWR_MGMT_2, 3)
+        return self.device.read_register_bit(PWR_MGMT_2, 3)
 
     def set_disable_az(self, value):
-        self.write_register_bit(PWR_MGMT_2, 3)
+        self.device.write_register_bit(PWR_MGMT_2, 3)
 
     def get_disable_gx(self):
-        return self.read_register_bit(PWR_MGMT_2, 2)
+        return self.device.read_register_bit(PWR_MGMT_2, 2)
 
     def set_disable_gx(self, value):
-        self.write_register_bit(PWR_MGMT_2, 2)
+        self.device.write_register_bit(PWR_MGMT_2, 2)
 
     def get_disable_gy(self):
-        return self.read_register_bit(PWR_MGMT_2, 1)
+        return self.device.read_register_bit(PWR_MGMT_2, 1)
 
     def set_disable_gy(self, value):
-        self.write_register_bit(PWR_MGMT_2, 1)
+        self.device.write_register_bit(PWR_MGMT_2, 1)
 
     def get_disable_gz(self):
-        return self.read_register_bit(PWR_MGMT_2, 0)
+        return self.device.read_register_bit(PWR_MGMT_2, 0)
 
     def set_disable_gz(self, value):
-        self.write_register_bit(PWR_MGMT_2, 0)
+        self.device.write_register_bit(PWR_MGMT_2, 0)
 
     def disable_accel(self):
-        data = self.read_register(PWR_MGMT_2)
+        data = self.device.read_register(PWR_MGMT_2)
         val = set_bits(data, 3, 3, 0x07)
-        self.write_register(PWR_MGMT_2, val)
+        self.device.write_register(PWR_MGMT_2, val)
         
     def disable_gyro(self):
-        data = self.read_register(PWR_MGMT_2)
+        data = self.device.read_register(PWR_MGMT_2)
         val = set_bits(data, 0, 3, 0x07)
-        self.write_register(PWR_MGMT_2, val)
+        self.device.write_register(PWR_MGMT_2, val)
 
     def enable_sensors(self):
-        self.write_register(PWR_MGMT_2, 0x00)
+        self.device.write_register(PWR_MGMT_2, 0x00)
 
     def get_fifo_count(self):
-        data = self.read_register_burst(FIFO_COUNTH, 2)
+        data = self.device.read_register_burst(FIFO_COUNTH, 2)
         return bytes_to_int16(data[1], data[0])
 
     def get_fifo_rw(self):
-        return self.read_register(FIFO_R_W)
+        return self.device.read_register(FIFO_R_W)
 
     def set_fifo_rw(self, value):
-        self.write_register(FIFO_RW, value)
+        self.device.write_register(FIFO_RW, value)
 
     def read_fifo_raw(self, n):
         """Read n values from FIFO buffer (n*2 bytes)."""
-        data = self.read_register_burst(FIFO_R_W, n * 2)
+        data = self.device.read_register_burst(FIFO_R_W, n * 2)
         values = []
         for i in range(n):
             values.append(bytes_to_int16(data[n+1], data[n]))
         return values
 
     def get_whoami(self):
-        return self.read_register(WHOAMI)
+        return self.device.read_register(WHOAMI)
 
     def search_device(self):
         """Check if WHO_AM_I register read equals DEVICE_ID"""
         return (self.get_whoami() == DEVICE_ID)
 
     def get_ax_offs(self):
-        data = self.read_register_burst(XA_OFFS_H, 2)
+        data = self.device.read_register_burst(XA_OFFS_H, 2)
         return bytes_to_int15(data[1], data[0])
 
     def set_ax_offs(self, value):
         (b0, b1) = int15_to_bytes(value)
-        self.write_register_burst(XA_OFFS_H, [b1, b0])
+        self.device.write_register_burst(XA_OFFS_H, [b1, b0])
 
     def get_ay_offs(self):
-        data = self.read_register_burst(YA_OFFS_H, 2)
+        data = self.device.read_register_burst(YA_OFFS_H, 2)
         return bytes_to_int15(data[1], data[0])
 
     def set_ay_offs(self, value):
         (b0, b1) = int15_to_bytes(value)
-        self.write_register_burst(YA_OFFS_H, [b1, b0])
+        self.device.write_register_burst(YA_OFFS_H, [b1, b0])
 
     def get_az_offs(self):
-        data = self.read_register_burst(ZA_OFFS_H, 2)
+        data = self.device.read_register_burst(ZA_OFFS_H, 2)
         return bytes_to_int15(data[1], data[0])
 
     def set_az_offs(self, value):
         (b0, b1) = int15_to_bytes(value)
-        self.write_register_burst(ZA_OFFS_H, [b1, b0])
+        self.device.write_register_burst(ZA_OFFS_H, [b1, b0])
 
     def get_accel_offs(self):
         x = self.get_ax_offs()
@@ -1062,7 +1032,7 @@ class MPU6500:
 
     def disable_i2c_master(self):
         """Disable I2C Master"""
-        self.write_register(I2C_MST_CTRL, 0x00)
+        self.device.write_register(I2C_MST_CTRL, 0x00)
         self.set_i2c_mst_en(False)
 
     def set_accel_mode(self, mode):
@@ -1156,7 +1126,7 @@ class MPU6500:
         time.sleep(0.1)
 
         # Set MST_CLK rate to 400kHz
-#        self.write_register(I2C_MST_CTRL, 0x09)
+#        self.device.write_register(I2C_MST_CTRL, 0x09)
 
     def print_cfg(self):
         category_values = [
@@ -1165,27 +1135,27 @@ class MPU6500:
             ["Gyro Offsets", self.get_gyro_offs_usr()],
             ["Accel Offsets", self.get_accel_offs()],
             ["SMPLRT_DIV", self.get_smplrt_div()],
-            ["Configuration", to_bin_str(self.read_register(CONFIG))],
+            ["Configuration", to_bin_str(self.device.read_register(CONFIG))],
             ["FIFO_MODE", self.get_fifo_mode()],
             ["EXT_FSYNC_SET", self.get_ext_fsync_set()],
             ["DLPF_CFG Gyro/Temp", self.get_gyro_temp_dlpf_cfg()],
-            ["Gyroscope Configuration", to_bin_str(self.read_register(GYRO_CONFIG))],
+            ["Gyroscope Configuration", to_bin_str(self.device.read_register(GYRO_CONFIG))],
             
             ["Gyro X Self Test Enabled", self.get_gx_st_en()],
             ["Gyro Y Self Test Enabled", self.get_gy_st_en()],
             ["Gyro Z Self Test Enabled", self.get_gz_st_en()],
             ["GYRO_FS_SEL", self.get_gyro_fs_sel()],
             ["FCHOICE_B", self.get_gyro_fchoice_b()],
-            ["Accelerometer Configuration", to_bin_str(self.read_register(ACCEL_CONFIG))],
+            ["Accelerometer Configuration", to_bin_str(self.device.read_register(ACCEL_CONFIG))],
             ["Accel X Self Test Enabled", self.get_ax_st_en()],
             ["Accel Y Self Test Enabled", self.get_ay_st_en()],
             ["Accel Z Self Test Enabled", self.get_az_st_en()],
             ["ACCEL_FS_SEL", self.get_accel_fs_sel()],
-            ["Accelerometer Configuration 2", to_bin_str(self.read_register(ACCEL_CONFIG_2))],
+            ["Accelerometer Configuration 2", to_bin_str(self.device.read_register(ACCEL_CONFIG_2))],
             ["FCHOICE_B", self.get_accel_fchoice_b()],
             ["DLPF_CFG Accel", self.get_accel_dlpf_cfg()],
             ["WOM_THR", self.get_wom_threshold()],
-            ["FIFO Enable", to_bin_str(self.read_register(FIFO_EN))],
+            ["FIFO Enable", to_bin_str(self.device.read_register(FIFO_EN))],
             ["FIFO TEMP_OUT", self.get_temp_fifo_en()],
             ["FIFO GYRO_XOUT", self.get_gx_fifo_en()],
             ["FIFO GYRO_YOUT", self.get_gy_fifo_en()],
@@ -1194,19 +1164,19 @@ class MPU6500:
             ["FIFO SLV_2", self.get_slv2_fifo_en()],
             ["FIFO SLV_1", self.get_slv1_fifo_en()],
             ["FIFO SLV_0", self.get_slv0_fifo_en()],
-            ["I2C Master Control", to_bin_str(self.read_register(I2C_MST_CTRL))],
+            ["I2C Master Control", to_bin_str(self.device.read_register(I2C_MST_CTRL))],
             ["MULT_MST_EN", self.get_mult_mst_en()],
             ["WAIT_FOR_ES", self.get_wait_for_es()],
             ["FIFO SLV_3", self.get_slv3_fifo_en()],
             ["I2C_MST_P_NSR", self.get_i2c_mst_p_nsr()],
             ["I2C_MST_CLK", self.get_i2c_mst_clk()],
-            ["User Control", to_bin_str(self.read_register(USER_CTRL))],
+            ["User Control", to_bin_str(self.device.read_register(USER_CTRL))],
             ["FIFO_EN", self.get_fifo_en()],
             ["I2C_MST_EN", self.get_i2c_mst_en()],
             ["I2C_IF_DIS", self.get_i2c_interface_disable()],
-            ["Power Management 1", to_bin_str(self.read_register(PWR_MGMT_1))],
+            ["Power Management 1", to_bin_str(self.device.read_register(PWR_MGMT_1))],
             ["Clock Source", self.get_clock_source()],
-            ["Power Management 2", to_bin_str(self.read_register(PWR_MGMT_2))]
+            ["Power Management 2", to_bin_str(self.device.read_register(PWR_MGMT_2))]
         ]
 
         for (key, val) in category_values:

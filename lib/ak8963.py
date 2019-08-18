@@ -5,6 +5,7 @@ Implementation of the MPU9250 9-DOF sensor chip
 import smbus
 import time
 
+from i2c import I2CDevice
 from bitops import *
 from math_func import mean
 
@@ -62,63 +63,39 @@ bus = smbus.SMBus(1)
 
 class AK8963:
     def __init__(self, address=SLAVE_ADDRESS):
-        self.address = address
+        self.device = I2CDevice(address)
         self.mag_offs = [0.0, 0.0, 0.0]
         self.configure()
 #        self.calibrate()
 
-    def write_register(self, register, value):
-        bus.write_byte_data(self.address, register, value)
-
-    def read_register(self, register):
-        return bus.read_byte_data(self.address, register)
-
-    def read_register_burst(self, register, n):
-        return bus.read_i2c_block_data(self.address, register, n)
-
-    def write_register_burst(self, register, data):
-        bus.write_i2c_block_data(self.address, register, data)
-
-    def read_register_bit(self, register, index):
-        """Reads specific bit at 'index' from register."""
-        data = self.read_register(register)
-        return check_bit(data, index)
-    
-    def write_register_bit(self, register, index, value):
-        """Write 'value' into specific bit at 'index' to register."""
-        data = self.read_register(register)
-        val = set_bit_value(data, index, value)
-        self.write_register(register, val)
-        
-
     def get_device_id(self):
-        return self.read_register(WIA)
+        return self.device.read_register(WIA)
 
     def get_info(self):
-        return self.read_register(INFO)
+        return self.device.read_register(INFO)
 
     def get_data_ready(self):
-        return self.read_register_bit(ST1, 0)
+        return self.device.read_register_bit(ST1, 0)
 
     def get_data_overrun(self):
-        return self.read_register_bit(ST1, 1)
+        return self.device.read_register_bit(ST1, 1)
 
     def read_mag_x_raw(self):
-        data = self.read_register_burst(HXL, 2)
+        data = self.device.read_register_burst(HXL, 2)
         return bytes_to_int16(data[0], data[1])
 
     def read_mag_y_raw(self):
-        data = self.read_register_burst(HYL, 2)
+        data = self.device.read_register_burst(HYL, 2)
         return bytes_to_int16(data[0], data[1])
 
     def read_mag_z_raw(self):
-        data = self.read_register_burst(HZL, 2)
+        data = self.device.read_register_burst(HZL, 2)
         return bytes_to_int16(data[0], data[1])
 
     def read_mag_raw(self):
         # check data ready
 #        if self.get_data_ready():
-        data = self.read_register_burst(HXL, 7)
+        data = self.device.read_register_burst(HXL, 7)
         # check overflow
         if not (data[6] & 0x08):
             x = bytes_to_int16(data[0], data[1])
@@ -128,31 +105,31 @@ class AK8963:
         return (0.0, 0.0, 0.0)
 
     def get_mag_overflow(self):
-        return self.read_register_bit(ST2, 3)
+        return self.device.read_register_bit(ST2, 3)
 
     def get_bit_mode_from_st2(self):
-        return self.read_register_bit(ST2, 4)
+        return self.device.read_register_bit(ST2, 4)
 
     def get_operation_mode(self):
-        data = self.read_register(CNTL1)
+        data = self.device.read_register(CNTL1)
         return data & 0x0f
 
     def set_operation_mode(self, value):
-        data = self.read_register(CNTL1)
+        data = self.device.read_register(CNTL1)
         val = set_bits(data, 0, 4, value)
-        self.write_register(CNTL1, value)
+        self.device.write_register(CNTL1, value)
 
     def get_bit_mode(self):
-        return self.read_register_bit(CNTL1, 4)
+        return self.device.read_register_bit(CNTL1, 4)
 
     def set_bit_mode(self, value):
-        self.write_register_bit(CNTL1, 4, value)
+        self.device.write_register_bit(CNTL1, 4, value)
 
     def reset(self):
-        self.write_register(CNTL2, 0x01)
+        self.device.write_register(CNTL2, 0x01)
 
     def set_i2c_disable(self):
-        self.write_register(I2CDIS, 0x1b)
+        self.device.write_register(I2CDIS, 0x1b)
 
     def configure(self):
         """Configure AK8963"""
@@ -178,7 +155,7 @@ class AK8963:
 
     def get_sens_adj(self):
         """Get sensitivity adjustment values."""
-        data = self.read_register_burst(ASAX, 3)
+        data = self.device.read_register_burst(ASAX, 3)
         sens_adj = [1.0, 1.0, 1.0]
         for i in range(3):
             sens_adj[i] += (data[i] - 128) / 256.0
